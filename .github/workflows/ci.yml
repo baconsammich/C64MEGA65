@@ -70,6 +70,13 @@ jobs:
           ./make_synthetic_crt.py --type generic16 -o "$CRT_DIR/generic16.crt"
           ./make_synthetic_crt.py --type ocean     -o "$CRT_DIR/ocean.crt"
 
+      # The C_MENU_* constants are absolute indices into the on-screen menu, so
+      # inserting a menu line silently shifts them. Nothing else in the build
+      # catches it - the core boots and then acts on the wrong menu item.
+      - name: Check the menu indices
+        working-directory: CORE/vhdl/test
+        run: ./check_menu.sh
+
       # Elaborating every entity type-checks each one's whole dependency tree.
       # Fails only on a regression against the documented expected-failure list.
       - name: Elaborate every VHDL entity
