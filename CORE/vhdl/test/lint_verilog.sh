@@ -17,13 +17,20 @@
 # always. Only errors fail the run.
 #
 # Usage: ./lint_verilog.sh
+#
+# Set VERILATOR to use a specific binary. A recent Verilator is required:
+# 5.020 as packaged by Debian/Ubuntu cannot parse an unpacked array with an
+# assignment-pattern initialiser ("wire [4:0] gcr_lut[16] = '{...}"), which
+# the MiSTer sources use. 5.053 is known to work.
 ##############################################################################
 set -uo pipefail
 
 cd "$(dirname "$0")"
 RTL=../../C64_MiSTerMEGA65/rtl
 
-command -v verilator >/dev/null || { echo "ERROR: verilator not found in PATH."; exit 1; }
+VERILATOR=${VERILATOR:-verilator}
+command -v "$VERILATOR" >/dev/null || { echo "ERROR: $VERILATOR not found."; exit 1; }
+echo "   using $("$VERILATOR" --version)"
 [ -d "$RTL" ] || { echo "ERROR: $RTL missing - run git submodule update --init."; exit 1; }
 
 # Modules Verilator legitimately cannot find, because they are VHDL or Xilinx
@@ -35,7 +42,7 @@ EXPECTED_BLACKBOX='T65|iecdrv_via6522|dualport_2clk_ram|xpm_cdc_array_single'
 ##############################################################################
 echo "== linting iec_drive (C1541 + C1581) =="
 cd "$RTL/iec_drive"
-verilator --lint-only -sv --top-module iec_drive \
+"$VERILATOR" --lint-only -sv --top-module iec_drive \
     -Wno-fatal -Wno-PINMISSING -Wno-IMPLICITSTATIC \
     iec_drive.sv \
     c1541_multi.sv c1541_drv.sv c1541_logic.sv c1541_gcr.sv c1541_track.sv \

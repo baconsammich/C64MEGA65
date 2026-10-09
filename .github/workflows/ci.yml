@@ -10,6 +10,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  # OSS CAD Suite release used for Verilator. Bump deliberately.
+  OSS_CAD_DATE: "2026-10-09"
+
 jobs:
   simulate:
     name: GHDL analysis and testbenches
@@ -74,14 +78,32 @@ jobs:
 
       # GHDL cannot read Verilog, which leaves the ~70 Verilog and
       # SystemVerilog files of the MiSTer core unchecked. Verilator covers them.
-      - name: Install Verilator
+      #
+      # Pinned rather than taken from apt: Verilator 5.020, as packaged by
+      # Ubuntu 24.04, cannot parse an unpacked array with an assignment-pattern
+      # initialiser ("wire [4:0] gcr_lut[16] = '{...}"), which c1541_gcr.sv and
+      # c1541_track.sv both use. The OSS CAD Suite ships a current Verilator.
+      - name: Cache the OSS CAD Suite
+        id: cache-oss-cad
+        uses: actions/cache@v4
+        with:
+          path: ~/oss-cad-suite
+          key: oss-cad-suite-${{ env.OSS_CAD_DATE }}
+
+      - name: Install the OSS CAD Suite (for Verilator)
+        if: steps.cache-oss-cad.outputs.cache-hit != 'true'
         run: |
-          sudo apt-get install -y --no-install-recommends verilator
-          verilator --version
+          curl -fsSL -o /tmp/oss-cad.tgz \
+            "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/$OSS_CAD_DATE/oss-cad-suite-linux-x64-${OSS_CAD_DATE//-/}.tgz"
+          mkdir -p "$HOME/oss-cad-suite"
+          tar xzf /tmp/oss-cad.tgz -C "$HOME/oss-cad-suite" --strip-components=1
 
       - name: Lint the Verilog sources
         working-directory: CORE/vhdl/test
-        run: ./lint_verilog.sh
+        # Passed explicitly rather than put on PATH: the suite also ships a
+        # gcc-backend ghdl, which would shadow the pinned mcode build above and
+        # then fail for want of a C compiler.
+        run: VERILATOR="$HOME/oss-cad-suite/bin/verilator" ./lint_verilog.sh
 
       # Self-contained and self-checking: builds its own stimulus and asserts
       # on the results, so it needs no external cartridge file.
