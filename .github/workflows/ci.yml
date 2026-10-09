@@ -76,6 +76,12 @@ jobs:
         working-directory: CORE/vhdl/test
         run: ./analyze_all.sh
 
+      # The vendored C1581 needs --std=93 -fsynopsys -frelaxed, so it has its
+      # own gate rather than joining the one above.
+      - name: Elaborate the vendored C1581
+        working-directory: CORE/vhdl/test
+        run: ./analyze_1581.sh
+
       # GHDL cannot read Verilog, which leaves the ~70 Verilog and
       # SystemVerilog files of the MiSTer core unchecked. Verilator covers them.
       #

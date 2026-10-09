@@ -40,6 +40,12 @@ Thanks to Carsten Elton Sørensen (csoren) for adding simulated cartridge
 support (.crt) for COMAL 80, Simons BASIC, Waterloo Structured BASIC,
 Mikro Assembler and BMP-Data Turbo 2000.
 
+Thanks to Gideon Zweijtzer for the 1541 Ultimate project
+(https://github.com/GideonZ/1541ultimate), from which the VHDL C1581 sources in
+CORE/vhdl/1581 are taken under the GNU General Public License v3. Unlike the
+MiSTer C1581, Gideon's drive is single-clock and takes its disk image over a
+memory bus, which is what makes it workable on the MEGA65.
+
 Thanks to Patrick Bass (baconsammich, github.com/baconsammich) for the
 continuous integration setup and the GHDL analysis gate, for the synthetic
 cartridge fixtures that let the testbenches run without a copyrighted

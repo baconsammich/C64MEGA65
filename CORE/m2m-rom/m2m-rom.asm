@@ -94,6 +94,11 @@ FILTER_FILES    INCRB
                 RSUB    M2M$CHK_EXT, 1
                 RBRA    _FFILES_RET_0, C        ; yes: do not filter it
 
+                ; ... or the ".D81" extension (1581 disk image)?
+                MOVE    C64_IMGFILE_D81, R9
+                RSUB    M2M$CHK_EXT, 1
+                RBRA    _FFILES_RET_0, C        ; yes: do not filter it
+
 _FFILES_DOFLT   MOVE    1, R8                   ; no: filter it
                 RBRA    _FFILES_RET, 1
 
@@ -174,14 +179,35 @@ _PREP_LI_CMP    MOVE    @R3++, R5               ; R5: valid lo word
 _PREP_LI_NEXT   SUB     1, R2                   ; next variant
                 RBRA    _PREP_LI_CMP, !Z
 
-                ; filesize wrong
+                ; Not a valid D64, so try the D81 sizes (1581 disk image)
+                MOVE    D81_VARIANT_CNT, R2     ; R2: amount of valid variants
+                MOVE    D81_STDSIZE_L, R3       ; R3: table of valid lo words
+                MOVE    D81_STDSIZE_H, R4       ; R4: table of valid hi words
+
+_PREP_LI_C81    MOVE    @R3++, R5               ; R5: valid lo word
+                MOVE    @R4++, R6               ; R6: valid hi word
+
+                CMP     R5, R0                  ; lo word equals table entry?
+                RBRA    _PREP_LI_N81, !Z        ; no: check next variant
+                CMP     R6, R1                  ; hi word equals table entry?
+                RBRA    _PREP_LI_OK81, Z        ; yes: correct filesize
+
+_PREP_LI_N81    SUB     1, R2                   ; next variant
+                RBRA    _PREP_LI_C81, !Z
+
+                ; filesize matches neither a D64 nor a D81
                 MOVE    1, R8                   ; R8: error code
-                MOVE    WRN_WRONG_D64, R9       ; R9: error message
+                MOVE    WRN_WRONG_IMG, R9       ; R9: error message
                 RBRA    _PREP_LI_RET, 1
 
-                ; filesize correct
+                ; filesize correct: 1581 disk image
+_PREP_LI_OK81   XOR     R8, R8                  ; no errors
+                MOVE    C64_IMGTYPE_D81, R9     ; image type: D81 (1581)
+                RBRA    _PREP_LI_RET, 1
+
+                ; filesize correct: 1541 disk image
 _PREP_LI_OK     XOR     R8, R8                  ; no errors
-                MOVE    C64_IMGTYPE_D64, R9     ; image type hardcoded to D64
+                MOVE    C64_IMGTYPE_D64, R9     ; image type: D64 (1541)
 
 _PREP_LI_RET    DECRB
                 RET
@@ -334,8 +360,11 @@ _CUSTOM_MSG_RET DECRB
 #include "osm_const.asm"
 
 ; Warning: At this point we are only supporting standard D64 files
-WRN_WRONG_D64   .ASCII_P "\n\nD64 file size must be exactly 174848 bytes\n"
-                .ASCII_P "(35 tracks) or 196608 bytes (40 tracks)."
+WRN_WRONG_IMG   .ASCII_P "\n\nD64 file size must be exactly 174848 bytes\n"
+                .ASCII_P "(35 tracks) or 196608 bytes (40 tracks).\n"
+                .ASCII_P "D81 file size must be 819200 or 829440 bytes\n"
+                .ASCII_P "(80 or 81 tracks), or 822400/832680 with an\n"
+                .ASCII_P "appended error map."
                 .ASCII_W "\n\nPress SPACE to continue.\n"
 
 ; Warning: Nothing to browse
@@ -377,6 +406,17 @@ D64_VARIANT_CNT .EQU    2
 D64_STDSIZE_L   .DW     0xAB00, 0x0000
 D64_STDSIZE_H   .DW     0x0002, 0x0003
 
+; Valid file sizes for *.d81 images (1581). A standard disk is 80 tracks of
+; 40 sectors of 256 bytes, but 81-track images are common in the wild - both
+; HDUTILS.d81 and SUPERCPU.d81 from CMD are 81 tracks - and either variant may
+; carry an appended error map of one byte per sector:
+;   80 tracks               3200 sectors   819200 bytes
+;   80 tracks + error map                  822400 bytes
+;   81 tracks               3240 sectors   829440 bytes
+;   81 tracks + error map                  832680 bytes
+D81_VARIANT_CNT .EQU    4
+D81_STDSIZE_L   .DW     0x8000, 0x8C80, 0xA800, 0xB4A8
+D81_STDSIZE_H   .DW     0x000C, 0x000C, 0x000C, 0x000C
 
 ; This needs to be the last thing before the "Variables" sections starts
 END_OF_ROM      .DW 0

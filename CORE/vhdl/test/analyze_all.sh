@@ -10,6 +10,9 @@
 #
 # It is NOT a substitute for synthesis: it never checks timing or resources.
 #
+# CORE/vhdl/1581 is excluded: those vendored sources need --std=93 -fsynopsys
+# -frelaxed, so they have their own gate in analyze_1581.sh.
+#
 # Usage: ./analyze_all.sh
 #
 # Honours the same overrides as the Makefile:
@@ -109,7 +112,8 @@ while read -r f; do
         TO_IMPORT+=("$REPO/$f")
     fi
 done < <(cd "$REPO" && find CORE/vhdl M2M/vhdl CORE/C64_MiSTerMEGA65 \
-            \( -name '*.vhd' -o -name '*.vhdl' \) | sort)
+            -path CORE/vhdl/1581 -prune -o \
+            \( -name '*.vhd' -o -name '*.vhdl' \) -print | sort)
 
 TO_IMPORT+=("$REPO/M2M/QNICE/vhdl/tools.vhd")
 
@@ -137,7 +141,8 @@ fi
 ##############################################################################
 mapfile -t ENTITIES < <(
     cd "$REPO" && grep -rhoE "^entity [a-zA-Z0-9_]+ is" CORE/vhdl M2M/vhdl \
-        --include=*.vhd --include=*.vhdl | awk '{print $2}' | sort -u
+        --include=*.vhd --include=*.vhdl --exclude-dir=1581 \
+        | awk '{print $2}' | sort -u
 )
 
 echo "== elaborating ${#ENTITIES[@]} entities =="
