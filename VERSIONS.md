@@ -8,6 +8,29 @@ is no entry in [doc/inofficial.md](doc/inofficial.md) for it.
 So far this contains no user-visible changes to the core itself: it is
 tooling, test infrastructure and bug fixes that only affect simulation.
 
+## New Features
+
+* Simulated C1581 and `*.d81` disk image support, as a first step towards
+  emulating the CMD FD-2000/4000. The C1581 drive model already existed in the
+  `C64_MiSTerMEGA65` submodule but was switched off, and could not simply be
+  switched back on: three separate bugs prevented it from elaborating. See
+  [doc/cmd_devices.md](doc/cmd_devices.md).
+
+  - The dormant instantiation in `iec_drive.sv` referenced `rom_addr`,
+    `rom_data`, `rom_wr` and `rom_std`, but those ports had been renamed to
+    `rom_addr_i` and friends, so it referred to signals that do not exist.
+  - `c1581_multi.sv` instantiated its switchable ROM as
+    `iecdrv_mem #(8,15,"./c1581_rom.mif")`, but `iecdrv_mem` takes only two
+    parameters. It now uses `iecdrv_mem_rom`, as `c1541_multi.sv` does.
+  - `c1541_multi.sv` had the same bug in its `PARPORT` branch, which would
+    have broken enabling the parallel port for DolphinDOS.
+
+  The five 1581 source files are now part of all four Vivado projects, and the
+  firmware recognises `*.d81` images (819200 bytes, or 822400 with an error
+  map) and reports image type 2 so that `iec_drive` selects the 1581. The
+  `C64_IMGFILE_D81` and `C64_IMGTYPE_D81` constants were already present in
+  `m2m-rom.asm`, unused.
+
 ## Bugfixes
 
 * `M2M/vhdl/qnice_csr.vhd`: `char_index_v` was declared `natural range 1 to 32`
@@ -47,6 +70,11 @@ tooling, test infrastructure and bug fixes that only affect simulation.
 * `CORE/vhdl/test/analyze_all.sh`: elaborates all 97 VHDL entities in about ten
   seconds, with a documented list of the entities that cannot elaborate under
   GHDL so the gate only fires on a genuine regression.
+
+* `CORE/vhdl/test/lint_verilog.sh`: lints the Verilog and SystemVerilog half
+  of the design with Verilator, which GHDL cannot read. This covers about 70
+  files that previously had no automated checking at all, and it is what found
+  the three C1581 bugs above.
 
 * `CORE/vhdl/test/make_synthetic_crt.py`: generates cartridge images for the
   testbenches that contain no copyrighted data, so CI needs no cartridge dump.

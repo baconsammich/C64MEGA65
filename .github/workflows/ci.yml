@@ -72,6 +72,17 @@ jobs:
         working-directory: CORE/vhdl/test
         run: ./analyze_all.sh
 
+      # GHDL cannot read Verilog, which leaves the ~70 Verilog and
+      # SystemVerilog files of the MiSTer core unchecked. Verilator covers them.
+      - name: Install Verilator
+        run: |
+          sudo apt-get install -y --no-install-recommends verilator
+          verilator --version
+
+      - name: Lint the Verilog sources
+        working-directory: CORE/vhdl/test
+        run: ./lint_verilog.sh
+
       # Self-contained and self-checking: builds its own stimulus and asserts
       # on the results, so it needs no external cartridge file.
       - name: Run tb_crt_parser

@@ -3,5 +3,5 @@
 	url = https://github.com/sy2002/QNICE-FPGA
 [submodule "C64_MiSTerMEGA65"]
 	path = CORE/C64_MiSTerMEGA65
-	url = https://github.com/MJoergen/C64_MiSTerMEGA65
-    branch = develop
+	url = https://github.com/baconsammich/C64_MiSTer
+	branch = cmd-fd-1581

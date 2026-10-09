@@ -11,8 +11,9 @@ C64 for MEGA65 core:
 | CMD HD | SCSI hard drive on IEC, 32K boot ROM | Viable, needs a new drive model |
 | SuperCPU | 65816 accelerator, 128K ROM | Hardest by a wide margin |
 
-**Nothing here is implemented.** This is a plan, written after surveying what
-the core already provides. Statements are marked *(verified)* where they were
+**Status:** step 1 is done - the dormant C1581 is enabled and `*.d81` images
+are recognised, which is the prerequisite for CMD FD. Everything else below is
+still a plan, written after surveying what the core already provides. Statements are marked *(verified)* where they were
 checked against the source, and *(unverified)* where they rest on general
 knowledge of the hardware and still need confirmation against the CMD
 documentation and VICE's implementation.
