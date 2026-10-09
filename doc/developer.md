@@ -89,6 +89,31 @@ The size of the configuration file needs to be equal to the constant
 `OPTM_SIZE` in `CORE/vhdl/config.vhd`. The `auto` parameter extracts this
 information automatically. The script is located in `M2M/tools`.
 
+Building an SD card
+-------------------
+
+```bash
+cd CORE
+./mksdcard.sh --out ~/c64mega65-sdcard --assets /path/to/your/roms
+./mksdcard.sh --out ~/c64mega65-sdcard --assets /path/to/your/roms --img
+```
+
+Stages everything the core needs onto a directory you can copy to a FAT32 SD
+card, and with `--img` also builds a FAT32 image (needs `mtools` and
+`dosfstools`). Re-run it whenever the menu changes - it regenerates
+`/c64/c64mega65` from `OPTM_SIZE` in `config.vhd` every time, so the
+configuration file cannot drift out of sync with the core. That matters,
+because the framework can neither create files nor change their length: the
+file has to already exist at exactly the right size.
+
+Optional files are picked up from `--assets` if they are there, so nothing
+copyrighted has to live in this repository. JiffyDOS is renamed to the names
+the core looks for (`jd-c64.bin`, `jd-c1541.bin`, see `globals.vhd`), any
+`*.d64`/`*.d81`/`*.g64`/`*.crt`/`*.prg` go to `/c64`, and if you unpack a
+MEGA65 core release into the assets directory its `sdcard-files` are copied to
+the root. A locally built `*.cor` is preferred over the released ones in
+`bin/`, so a fresh Vivado build is picked up automatically.
+
 CMD device support
 ------------------
 

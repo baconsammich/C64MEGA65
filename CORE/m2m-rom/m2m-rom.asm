@@ -362,8 +362,9 @@ _CUSTOM_MSG_RET DECRB
 ; Warning: At this point we are only supporting standard D64 files
 WRN_WRONG_IMG   .ASCII_P "\n\nD64 file size must be exactly 174848 bytes\n"
                 .ASCII_P "(35 tracks) or 196608 bytes (40 tracks).\n"
-                .ASCII_P "D81 file size must be exactly 819200 bytes\n"
-                .ASCII_P "(80 tracks) or 822400 bytes (with error map)."
+                .ASCII_P "D81 file size must be 819200 or 829440 bytes\n"
+                .ASCII_P "(80 or 81 tracks), or 822400/832680 with an\n"
+                .ASCII_P "appended error map."
                 .ASCII_W "\n\nPress SPACE to continue.\n"
 
 ; Warning: Nothing to browse
@@ -405,12 +406,17 @@ D64_VARIANT_CNT .EQU    2
 D64_STDSIZE_L   .DW     0xAB00, 0x0000
 D64_STDSIZE_H   .DW     0x0002, 0x0003
 
-; Valid file sizes for *.d81 images (1581): 80 tracks * 40 sectors * 256
-; bytes = 819200 bytes (0x000C8000). The 822400 byte variant carries an
-; appended error map.
-D81_VARIANT_CNT .EQU    2
-D81_STDSIZE_L   .DW     0x8000, 0x8C80
-D81_STDSIZE_H   .DW     0x000C, 0x000C
+; Valid file sizes for *.d81 images (1581). A standard disk is 80 tracks of
+; 40 sectors of 256 bytes, but 81-track images are common in the wild - both
+; HDUTILS.d81 and SUPERCPU.d81 from CMD are 81 tracks - and either variant may
+; carry an appended error map of one byte per sector:
+;   80 tracks               3200 sectors   819200 bytes
+;   80 tracks + error map                  822400 bytes
+;   81 tracks               3240 sectors   829440 bytes
+;   81 tracks + error map                  832680 bytes
+D81_VARIANT_CNT .EQU    4
+D81_STDSIZE_L   .DW     0x8000, 0x8C80, 0xA800, 0xB4A8
+D81_STDSIZE_H   .DW     0x000C, 0x000C, 0x000C, 0x000C
 
 ; This needs to be the last thing before the "Variables" sections starts
 END_OF_ROM      .DW 0
