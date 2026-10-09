@@ -26,6 +26,12 @@
 #      The menu structure itself is built at runtime so its exact size is not
 #      known here; this checks the part that can be computed and leaves a
 #      margin.
+#   5. The menu items carrying OPTM_G_LOAD_ROM line up with C_CRTROMS_MAN in
+#      globals.vhd. The framework identifies a manually loadable ROM by
+#      *counting* those menu items (CRTROM_M_NO in M2M/rom/crts-and-roms.asm),
+#      so the n-th such item must match the n-th entry of C_CRTROMS_MAN. Get it
+#      wrong and every item loads its file into the next entry's buffer - the
+#      file browser still lists and still loads, so nothing fails loudly.
 #
 # Usage: ./check_menu.sh
 ##############################################################################
@@ -125,6 +131,69 @@ if needed > heap:
 elif heap - needed < MARGIN:
     die("MENU_HEAP_SIZE %d leaves only %d words spare, under the %d-word margin - "
         "raise it in CORE/m2m-rom/m2m-rom.asm" % (heap, heap - needed, MARGIN))
+
+# ---- OPTM_G_LOAD_ROM menu order vs C_CRTROMS_MAN ---------------------------
+# The expected globals.vhd symbol for each kind of loadable item, keyed by the
+# prefix of the menu text. Add a line here when you add a loadable ROM item.
+ROM_ITEM_SYMBOL = {
+    'D81': 'C_HMAP_1581_IMG',
+    'PRG': 'C_DEV_C64_PRG',
+    'CRT': 'C_DEV_C64_CRT',
+}
+
+# menu items carrying OPTM_G_LOAD_ROM, in menu order
+load_rom_items = [(i, entries[i]) for i, g in enumerate(groups)
+                  if 'OPTM_G_LOAD_ROM' in g]
+
+# C_CRTROMS_MAN, in array order: entries are (type, device-or-window) pairs,
+# terminated by x"EEEE"
+man_src = re.search(r'constant C_CRTROMS_MAN\s+: crtrom_buf_array :=\s*\((.*?)\);\n',
+                    glb, re.S).group(1)
+man_src = re.sub(r'--[^\n]*', '', man_src)                   # strip comments
+man_toks = [t.strip() for t in man_src.split(',') if t.strip()]
+man_toks = [t for t in man_toks if 'EEEE' not in t]
+man_pairs = list(zip(man_toks[0::2], man_toks[1::2]))
+
+print()
+print("== loadable ROM order ==")
+print("   %d OPTM_G_LOAD_ROM menu item(s), C_CRTROMS_MAN_NUM=%d, %d array entr(ies)"
+      % (len(load_rom_items), man, len(man_pairs)))
+
+if len(load_rom_items) != man:
+    die("%d menu items carry OPTM_G_LOAD_ROM but C_CRTROMS_MAN_NUM is %d"
+        % (len(load_rom_items), man))
+if len(man_pairs) != man:
+    die("C_CRTROMS_MAN holds %d entries but C_CRTROMS_MAN_NUM is %d"
+        % (len(man_pairs), man))
+
+for slot, (idx, text) in enumerate(load_rom_items):
+    kind = text.split(':')[0].strip().upper()
+    want = ROM_ITEM_SYMBOL.get(kind)
+    got  = man_pairs[slot][1] if slot < len(man_pairs) else '<missing>'
+    print("   slot %d  menu[%d] %-22r -> %s" % (slot, idx, text, got))
+    if want is None:
+        die("menu item %r at index %d carries OPTM_G_LOAD_ROM but is not in "
+            "ROM_ITEM_SYMBOL - add it to check_menu.sh" % (text, idx))
+    elif want != got:
+        die("menu item %r is loadable ROM slot %d, but C_CRTROMS_MAN slot %d is "
+            "%s, not %s - reorder C_CRTROMS_MAN in globals.vhd to match the menu"
+            % (text, slot, slot, got, want))
+
+# the firmware hard-codes the slot of the *.d81 entry to publish its load flag
+m = re.search(r'C64_CRTROM_MAN_D81\s+\.EQU\s+(0x[0-9A-Fa-f]+|\d+)', asm)
+if m:
+    asm_slot = int(m.group(1), 0)
+    d81_slot = next((s for s, (_, t) in enumerate(load_rom_items)
+                     if t.split(':')[0].strip().upper() == 'D81'), None)
+    print("   C64_CRTROM_MAN_D81 = %d (m2m-rom.asm), D81 is slot %s"
+          % (asm_slot, d81_slot))
+    if d81_slot is None:
+        die("C64_CRTROM_MAN_D81 is defined but no D81 menu item carries "
+            "OPTM_G_LOAD_ROM")
+    elif asm_slot != d81_slot:
+        die("C64_CRTROM_MAN_D81 is %d but the D81 item is loadable ROM slot %d "
+            "- the core would be told the wrong mount status. Fix it in "
+            "CORE/m2m-rom/m2m-rom.asm" % (asm_slot, d81_slot))
 
 print()
 if die.bad:

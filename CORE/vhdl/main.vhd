@@ -1566,9 +1566,24 @@ begin
       ); -- i_avm_arbit_main
 
    ---------------------------------------------------------------------------
-   -- C1581 (*.d81). Mounted when the Shell reports a disk image of type 2.
+   -- C1581 (*.d81)
+   --
+   -- The drive is only released from reset once BOTH of the bits the Shell
+   -- publishes through qnice_gp_reg are set:
+   --
+   --   bit 0  a *.d81 has been loaded into the HyperRAM image window
+   --          (OSM_SEL_POST in CORE/m2m-rom/m2m-rom.asm)
+   --   bit 1  /c64/1581.rom has been loaded into the HyperRAM DOS window
+   --          (PREP_START, ditto)
+   --
+   -- Bit 1 matters because the DOS ROM is an *optional* auto-load ROM in
+   -- globals.vhd: the core has to boot on an SD card that does not carry
+   -- 1581.rom. Without this gate the drive's 6502 would come out of reset and
+   -- fetch its reset vector from uninitialised HyperRAM, run away, and starve
+   -- the rest of the core of HyperRAM bandwidth - which looks like a hang, not
+   -- like a missing file.
    ---------------------------------------------------------------------------
-   c1581_mounted <= qnice_gp_reg_i(0);
+   c1581_mounted <= qnice_gp_reg_i(0) and qnice_gp_reg_i(1);
 
    i_c1581_wrapper : entity c1581_lib.c1581_wrapper
       generic map (

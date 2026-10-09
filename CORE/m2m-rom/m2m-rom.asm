@@ -264,7 +264,36 @@ PREP_START      INCRB
                 MOVE    1, R9
                 RSUB    M2M$SET_SETTING, 1
 
-PREP_START_R    XOR     R8, R8
+                ; Tell the core whether the C1581 DOS ROM made it into
+                ; HyperRAM.
+                ;
+                ; /c64/1581.rom is an *optional* auto-load ROM (globals.vhd),
+                ; because the core must boot on an SD card that does not carry
+                ; it. But the drive cannot run without it: its 6502 would fetch
+                ; a reset vector out of uninitialised HyperRAM. So publish the
+                ; load flag and let main.vhd hold the drive in reset until both
+                ; this and a mounted *.d81 are present.
+                ;
+                ; This runs here rather than in OSM_SEL_POST because auto-load
+                ; ROMs are fetched during start-up, long before the user can
+                ; open the menu.
+PREP_START_R    MOVE    CRTROM_AUT_LDF, R0
+                ADD     C64_CRTROM_AUT_1581, R0
+                MOVE    @R0, R1                 ; R1: 1 = DOS ROM is loaded
+                AND     0x0001, R1
+                ADD     R1, R1                  ; -> gp_reg bit 1. Doubling
+                                                ; rather than SHL, because
+                                                ; the QNICE SHL shifts the X flag
+                                                ; in from the right.
+                MOVE    M2M$CFD_ADDR, R0
+                MOVE    0, @R0                  ; window 0 = gp_reg bits 15..0
+                MOVE    M2M$CFD_DATA, R0
+                MOVE    @R0, R2
+                AND     0xFFFD, R2              ; clear bit 1
+                OR      R1, R2
+                MOVE    R2, @R0
+
+                XOR     R8, R8
                 XOR     R9, R9
 
                 DECRB
@@ -305,7 +334,7 @@ OSM_SEL_POST    INCRB
                 ;
                 ; CRTROM_MAN_LDF is the array of "has been loaded" flags for
                 ; manually loadable ROMs, in the order they appear in
-                ; C_CRTROMS_MAN in globals.vhd: 0 = PRG, 1 = CRT, 2 = D81.
+                ; C_CRTROMS_MAN in globals.vhd: 0 = D81, 1 = PRG, 2 = CRT.
                 CMP     C64_OPTM_G_LOAD_D81, R8
                 RBRA    _OSM_SEL_POST_1, !Z
                 MOVE    CRTROM_MAN_LDF, R0
@@ -430,9 +459,12 @@ C64_IMGTYPE_D64 .EQU    0x0000  ; 1541 emulated GCR: D64
 C64_IMGTYPE_G64 .EQU    0x0001  ; 1541 real GCR mode: G64, D64
 C64_IMGTYPE_D81 .EQU    0x0002  ; 1581: D81
 
+; Index of the C1581 DOS ROM within C_CRTROMS_AUTO in globals.vhd
+C64_CRTROM_AUT_1581 .EQU 0x0002
+
 ; Index of the *.d81 entry within C_CRTROMS_MAN in globals.vhd
 ; (0 = PRG, 1 = CRT, 2 = D81)
-C64_CRTROM_MAN_D81 .EQU 0x0002
+C64_CRTROM_MAN_D81 .EQU 0x0000
 
 ; We currently only support D64 images with 35 tracks (filesize 174,848 bytes)
 ; or 40 tracks (filesize 196,608 bytes).

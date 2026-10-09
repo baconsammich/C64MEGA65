@@ -145,6 +145,18 @@ fi
 
 ##############################################################################
 # Optional FAT32 image
+#
+# The image is MBR-partitioned, the way a real SD card is. The core mounts the
+# card through FAT32$MOUNT_SD (M2M/QNICE/monitor/fat32_library.asm), which
+# reads LBA 0, checks for the 0xAA55 signature and then looks for a partition
+# of type 0x0B or 0x0C in the table at offset 0x01BE.
+#
+# A bare "mformat ... ::" image does in fact mount: mtools leaves a partition
+# entry of type 0x0C at 0x01BE whose start LBA is 0, which points the library
+# back at the boot sector it just read. That works, but it is a quirk rather
+# than a layout, and it is not what the MEGA65 hypervisor expects to find when
+# it looks for cores. So write a normal MBR with partition 1 at the 1 MiB
+# boundary and format inside it using mtools "@@offset" syntax.
 ##############################################################################
 if [ "$MAKE_IMG" -eq 1 ]; then
     if ! command -v mformat >/dev/null || ! command -v mcopy >/dev/null; then
@@ -153,17 +165,76 @@ if [ "$MAKE_IMG" -eq 1 ]; then
         echo "         The staging directory in $OUT is still complete."
     else
         echo
-        echo "image  : building $IMG (${IMG_SIZE_MB} MB, FAT32)"
+        echo "image  : building $IMG (${IMG_SIZE_MB} MB, FAT32, MBR-partitioned)"
         rm -f "$IMG"
         dd if=/dev/zero of="$IMG" bs=1M count="$IMG_SIZE_MB" status=none
-        # -F forces FAT32, which is what the MEGA65 expects
-        mformat -i "$IMG" -F -v C64MEGA65 ::
+
+        # Partition 1 starts at the conventional 1 MiB boundary and fills the
+        # image. Type 0x0C is "FAT32 with LBA".
+        PART_START=2048                                  # in 512-byte sectors
+        PART_SECTORS=$(( IMG_SIZE_MB * 2048 - PART_START ))
+        python3 - "$IMG" "$PART_START" "$PART_SECTORS" <<'EOPY'
+import struct, sys
+img, start, count = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+mbr = bytearray(512)
+# 0x80 = bootable. The CHS fields are set to the "use LBA instead" sentinel,
+# which is what every tool does for a partition beyond the CHS limit.
+entry = struct.pack('<B3sB3sII',
+                    0x80, b'\xfe\xff\xff', 0x0C, b'\xfe\xff\xff',
+                    start, count)
+mbr[0x1BE:0x1BE + 16] = entry
+mbr[0x1FE:0x200] = b'\x55\xaa'
+with open(img, 'r+b') as f:
+    f.write(mbr)
+EOPY
+
+        # mtools reaches inside the partition via "@@<byte offset>"
+        MDRIVE="${IMG}@@$(( PART_START * 512 ))"
+        # -F forces FAT32; -T sizes the filesystem to the partition
+        mformat -i "$MDRIVE" -F -T "$PART_SECTORS" -v C64MEGA65 ::
         ( cd "$OUT" && for e in *; do
               [ -e "$e" ] || continue
-              mcopy -i "$IMG" -s -o "$e" ::/ ;
+              mcopy -i "$MDRIVE" -s -o "$e" ::/ ;
           done )
-        echo "       + $(du -h "$IMG" | cut -f1) written"
+        echo "       + $(du -h "$IMG" | cut -f1) written, partition 1 at sector $PART_START"
+
+        # Prove the core would be able to mount it: signature and type byte
+        python3 - "$IMG" <<'EOPY'
+import sys
+with open(sys.argv[1], 'rb') as f:
+    mbr = f.read(512)
+sig  = mbr[0x1FE:0x200]
+ptype = mbr[0x1BE + 4]
+ok = sig == b'\x55\xaa' and ptype in (0x0B, 0x0C)
+print("       + MBR check: signature %s, partition type 0x%02X -> %s"
+      % (sig.hex(), ptype, "mountable" if ok else "NOT MOUNTABLE"))
+sys.exit(0 if ok else 1)
+EOPY
     fi
+fi
+
+##############################################################################
+# Is the card actually ready to run the C1581?
+#
+# Both of these live on the card and are fetched at runtime, so a card that is
+# missing them gives no error - the core boots, the menu opens, and the D81
+# file browser simply has nothing to list. That is not obvious from the core,
+# so say it here.
+##############################################################################
+echo
+echo "C1581 readiness:"
+if [ -f "$OUT/c64/1581.rom" ]; then
+    echo "  OK      c64/1581.rom present ($(stat -c%s "$OUT/c64/1581.rom") bytes)"
+else
+    echo "  MISSING c64/1581.rom - the drive stays switched off without its DOS."
+    echo "          Put a 1581 DOS dump named 1581.rom (or JiffyDOS_1581.bin)"
+    echo "          into the --assets directory and re-run."
+fi
+nd81=$(find "$OUT/c64" -maxdepth 1 -iname '*.d81' 2>/dev/null | wc -l)
+if [ "$nd81" -gt 0 ]; then
+    echo "  OK      $nd81 *.d81 image(s) in c64/ for the D81 menu item to list"
+else
+    echo "  MISSING no *.d81 images in c64/ - the D81 file browser will be empty."
 fi
 
 ##############################################################################
@@ -172,3 +243,14 @@ echo "RESULT: SD card staged in $OUT"
 find "$OUT" -type f | sed "s|$OUT|  .|" | sort | head -40
 total=$(find "$OUT" -type f | wc -l)
 [ "$total" -gt 40 ] && echo "  ... and $((total - 40)) more file(s)"
+
+cat <<EOTXT
+
+To put this on the MEGA65:
+  * Either write the .img to the card (if one was built above), which replaces
+    everything on it, or
+  * copy the *contents* of $OUT
+    onto the card, keeping the layout - in particular the c64/ subdirectory.
+    Copying only the .cor is not enough: the ROMs and disk images are read off
+    the card at runtime, out of /c64.
+EOTXT

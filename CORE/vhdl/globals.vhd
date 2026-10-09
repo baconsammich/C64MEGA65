@@ -173,11 +173,20 @@ constant C_CRTROMTYPE_OPTIONAL   : std_logic_vector(15 downto 0) := x"0004";
 -- In case we are loading to a QNICE device, then the control and status register is located at the 4k window 0xFFFF.
 -- @TODO: See @TODO for more details about the control and status register
 constant C_CRTROMS_MAN_NUM       : natural := 3;                                       -- Amount of manually loadable ROMs and carts, maximum is 16
-constant C_CRTROMS_MAN           : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE,   C_DEV_C64_PRG,
-                                                         C_CRTROMTYPE_DEVICE,   C_DEV_C64_CRT,
+--
+-- IMPORTANT: the order of this array is not free. The framework identifies a
+-- manually loadable ROM by *counting* the menu items that carry the
+-- OPTM_G_LOAD_ROM flag in config.vhd's OPTM_GROUPS (see CRTROM_M_NO in
+-- M2M/rom/crts-and-roms.asm), so entry n here must correspond to the n-th such
+-- menu item, top to bottom. config.vhd currently lists them as
+-- D81, PRG, CRT, so that is the order below. Get this wrong and each menu item
+-- silently loads its file into the next device's buffer.
+constant C_CRTROMS_MAN           : crtrom_buf_array := (
                                                          -- The C1581 reads its disk image straight out of HyperRAM, because
                                                          -- the drive DMAs its own sectors instead of being handed blocks.
-                                                         C_CRTROMTYPE_HYPERRAM, C_HMAP_1581_IMG,
+                                                         C_CRTROMTYPE_HYPERRAM, C_HMAP_1581_IMG,   -- 0: " D81:%s"
+                                                         C_CRTROMTYPE_DEVICE,   C_DEV_C64_PRG,     -- 1: " PRG:%s"
+                                                         C_CRTROMTYPE_DEVICE,   C_DEV_C64_CRT,     -- 2: " CRT:%s"
                                                          x"EEEE");                     -- Always finish the array using x"EEEE"
 
 -- Automatically loaded ROMs: These ROMs are loaded before the core starts
