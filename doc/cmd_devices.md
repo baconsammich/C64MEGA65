@@ -238,29 +238,52 @@ the FD DOS's I/O accesses against the 1581 model before writing code.
 **Why attractive.** It needs no submodule changes, and both halves of it map
 onto machinery the core already has.
 
-**Design.**
+**Register map** *(verified against VICE's `src/c64/cart/ramlink.c`, which is
+the authoritative open-source implementation)*. RAMLink decodes ten separate
+I/O ranges:
 
-* Add expansion-port mode 3. `hr_c64_exp_port_mode` is already 2 bits, so only
-  `c64_exp_port_mode`'s `natural range 0 to 2` and the menu change.
-* Its 64K DOS ROM maps into cartridge space in 8K banks - the `crt_cacher`
-  pattern, unchanged.
-* Its RAM is used as a RAM **disk**: block-oriented, latency-tolerant, so it
-  belongs behind HyperRAM via a `reu_mapper`-style bridge with its own
-  `C_HMAP_*` window. `ramlink.rl` (8 MB) suggests the RAM size to support.
-* RAMLink also provides a pass-through expansion port and a RAM-Port for an
-  REU *(unverified)*. Decide early whether to emulate those at all; the
-  simplest useful version is RAMLink alone, with no pass-through.
+| Range | Function |
+|:------|:---------|
+| `$DE00-$DEFF` | Windowed access; what appears here is chosen by `$DFC0-$DFC3` |
+| `$DF20-$DF22` | REU pass-through trap control (the "RAM-Port") |
+| `$DF40-$DF43` | **Intel 8255A PPI**, four registers |
+| `$DF60` | RL-DOS ROM on |
+| `$DF70` | RL-DOS ROM off |
+| `$DF7E` / `$DF7F` | RAMLink on / off |
+| `$DF80-$DF9F` | RAM window base: `rambase = (addr & 0x1f) << 8` |
+| `$DFA0-$DFA3` | 32-bit RAMCard address register, written a byte at a time |
+| `$DFB0-$DFBF` | **RTC 72421**, sixteen registers |
+| `$DFC0-$DFC3` | Selects the `$DE00` window mode |
 
-**Steps.** Study VICE's RAMLink implementation for the register map and
-behaviour; define the register interface; map the ROM; map the RAM; add the
-menu entry; test with `RAMLink.[81].d81` and the RAMDRIVE utilities on the
-CMD HD image.
+This confirms the feasibility argument above and sharpens it:
+
+* RAM is reached through a **window** at `$DE00` with a base register and a
+  32-bit card address, not by executing from it. That is latency-tolerant, so
+  HyperRAM behind a `reu_mapper`-style bridge is the right home for it - the
+  `$DFA0-$DFA3` card address maps directly onto that 32-bit interface.
+* The ROM is switched in and out wholesale by `$DF60`/`$DF70`, which suits the
+  existing `crt_cacher` bank-cache approach.
+* Two sub-devices are needed that the core does not have: an **8255A PPI** and
+  an **RTC 72421**. The RTC may be partly reusable - the core already has
+  `rtc_wrapper`, `rtc_master` and `rtc_controller` entities for the MEGA65's
+  own real-time clock (see `doc/RTC.md`), though the register interface is a
+  different chip and would need a shim.
+* The REU pass-through is real, not optional dressing: `$DF20-$DF22` traps and
+  forwards to a REU. Since this core already simulates a 1750 REU, deciding
+  how the two interact is part of the design rather than an afterthought.
+
+**Steps.** Model the 8255A and the RTC 72421; implement the register file and
+the on/off and DOS-in/DOS-out states; map the ROM through the bank cache; map
+the RAMCard window onto HyperRAM with its own `C_HMAP_*` window; add
+expansion-port mode 3 (`hr_c64_exp_port_mode` is already two bits wide, so only
+`c64_exp_port_mode`'s `natural range 0 to 2` and the menu need widening); then
+test against `RAMLink.d81` and the RAMDRIVE utilities on the CMD HD image.
 
 **Risks.** RAMLink patches the KERNAL and is reportedly timing-sensitive
 *(unverified)*. Its interaction with the existing REU and simulated-cartridge
 modes needs care - they contend for the same expansion-port path and HyperRAM
-bandwidth. GEOS support is a distinct body of work: the ROM contains GEOS
-hooks *(verified: a `GEOS format` string appears in `ramlink201.bin`)*.
+bandwidth. GEOS support is a distinct body of work: the ROM contains GEOS hooks
+*(verified: a `GEOS format` string appears in `ramlink201.bin`)*.
 
 3. CMD HD
 ---------
@@ -295,7 +318,9 @@ exactly this, and it is arguably *simpler* than the GCR floppy emulation the
 core already performs.
 
 **Steps.** Establish the CMD HD's controller hardware (CPU type, RAM, register
-map, how the boot ROM reaches the disk) from the documentation; build a drive
+map, how the boot ROM reaches the disk) - VICE implements this device too, in
+`src/drive/iec/cmdhd.c`, which `ramlink.c` includes, so there is an
+authoritative reference to read rather than guess from; build a drive
 model alongside `c1541_drv.sv`/`c1581_drv.sv`; map its disk access onto the
 existing block interface; extend `img_type` (currently a 2-bit field with
 three values used, so a fourth fits) and the mount logic for a new image type;
