@@ -110,12 +110,21 @@ constant C_HMAP_CRT              : std_logic_vector(15 downto 0) := x"0200";    
 --   0x400000 .. 0x47FFFF   simulated 1750 REU, 512 KB   (window x"200")
 --   0x400000 .. 0x400000+n simulated cartridge, n = CRT file size (same base;
 --                          the REU and a *.crt are mutually exclusive)
---   0x728000 .. 0x737FFF   C1581 drive ROM and RAM, 64 KB (window x"394")
+--   0x728000 .. 0x72FFFF   C1581 drive RAM, 32 KB          (window x"394")
+--   0x730000 .. 0x737FFF   C1581 drive DOS ROM, 32 KB      (window x"398")
 --   0x738000 .. 0x7FFFFF   C1581 *.d81 image, 819200 bytes (window x"39C")
 --
 -- The C1581 is packed against the top so that it stays clear of a *.crt of up
 -- to 3.3 MB, which is far larger than any real cartridge.
-constant C_HMAP_1581_MEM         : std_logic_vector(15 downto 0) := x"0394";     -- drive ROM/RAM, 8 windows
+--
+-- cpu_part_1581.vhd maps the drive's whole 64 KB CPU address space onto
+-- g_ram_base, so its ROM sits at CPU $8000..$FFFF, i.e. 32 KB into the block -
+-- which is why the DOS ROM loads at x"398" and not at the block base. Loading
+-- it at the base instead puts it in the RAM half, leaves the 6502's reset
+-- vector reading whatever happens to be in HyperRAM, and the resulting runaway
+-- fetches starve the video scaler of bandwidth and lock the machine up.
+constant C_HMAP_1581_MEM         : std_logic_vector(15 downto 0) := x"0394";     -- drive RAM/ROM block, 8 windows
+constant C_HMAP_1581_ROM         : std_logic_vector(15 downto 0) := x"0398";     -- DOS ROM within it, 4 windows
 constant C_HMAP_1581_IMG         : std_logic_vector(15 downto 0) := x"039C";     -- *.d81 image, 100 windows
 
 ----------------------------------------------------------------------------------------------------------
@@ -203,7 +212,7 @@ constant C_CRTROMS_AUTO_NAMES    : string  := JIFFY_DOS_C64 & JIFFY_DOS_C1541 & 
 constant C_CRTROMS_AUTO          : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE,   C_DEV_C64_KERNAL_C64,   C_CRTROMTYPE_OPTIONAL, JIFFY_DOS_C64_START,
                                                          C_CRTROMTYPE_DEVICE,   C_DEV_C64_KERNAL_C1541, C_CRTROMTYPE_OPTIONAL, JIFFY_DOS_C1541_START,
                                                          -- The C1581's own DOS ROM, fetched by the drive out of HyperRAM
-                                                         C_CRTROMTYPE_HYPERRAM, C_HMAP_1581_MEM,        C_CRTROMTYPE_OPTIONAL, C1581_DOS_START,
+                                                         C_CRTROMTYPE_HYPERRAM, C_HMAP_1581_ROM,        C_CRTROMTYPE_OPTIONAL, C1581_DOS_START,
                                                          x"EEEE");                     -- Always finish the array using x"EEEE"
 
 ----------------------------------------------------------------------------------------------------------

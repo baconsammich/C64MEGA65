@@ -104,7 +104,17 @@ architecture synthesis of c1581_wrapper is
    signal power_led_n : std_logic;
    signal motor_led_n : std_logic;
 
+   -- Held in reset until an image is mounted. The drive's 6502 fetches
+   -- continuously once running, and every fetch is a HyperRAM access shared
+   -- with the video scaler, so there is no reason to let it run when there is
+   -- no disk. It also means a user who never touches *.d81 cannot be affected
+   -- by this at all. The cost is that the drive does not answer on the IEC bus
+   -- to report "no disk" before one is inserted.
+   signal drive_rst   : std_logic;
+
 begin
+
+   drive_rst <= rst_i or not img_mounted_i;
 
    ------------------------------------------------------------------------------
    -- Timing ticks
@@ -147,7 +157,7 @@ begin
       )
       port map (
          clock        => clk_i,
-         reset        => rst_i,
+         reset        => drive_rst,
          drive_stop   => '0',
          tick_4MHz    => tick_4mhz,
          tick_1KHz    => tick_1khz,
@@ -180,7 +190,7 @@ begin
    i_disk_server : entity work.c1581_disk_server
       port map (
          clk_i          => clk_i,
-         rst_i          => rst_i,
+         rst_i          => drive_rst,
          io_req_o       => io_req,
          io_resp_i      => io_resp,
          img_base_i     => img_base_i,
@@ -200,7 +210,7 @@ begin
       )
       port map (
          clk_i               => clk_i,
-         rst_i               => rst_i,
+         rst_i               => drive_rst,
          mem_req_i           => mem_req,
          mem_resp_o          => mem_resp,
          avm_write_o         => avm_write_o,
