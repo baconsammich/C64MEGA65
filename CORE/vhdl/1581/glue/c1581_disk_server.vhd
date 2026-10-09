@@ -69,8 +69,10 @@ architecture synthesis of c1581_disk_server is
    constant C_DRV_POWER     : unsigned(23 downto 0) := X"000000";
    constant C_DRV_RESET     : unsigned(23 downto 0) := X"000001";
    constant C_DRV_ADDRESS   : unsigned(23 downto 0) := X"000002";
+   constant C_DRV_SENSOR    : unsigned(23 downto 0) := X"000003";
    constant C_DRV_INSERTED  : unsigned(23 downto 0) := X"000004";
    constant C_DRV_SIDE      : unsigned(23 downto 0) := X"000006";
+   constant C_DRV_DISKCHNG  : unsigned(23 downto 0) := X"00000C";
    constant C_DRV_DRIVETYPE : unsigned(23 downto 0) := X"00000D";
 
    constant C_WD_CMD        : unsigned(23 downto 0) := X"001800";
@@ -94,8 +96,8 @@ architecture synthesis of c1581_disk_server is
    constant C_SECTORS_TRACK : natural := 10;
 
    type t_state is (
-      RESET_ST, INIT_POWER_ST, INIT_TYPE_ST, INIT_ADDR_ST, INIT_INSERT_ST,
-      INIT_RELEASE_ST,
+      RESET_ST, INIT_POWER_ST, INIT_TYPE_ST, INIT_ADDR_ST, INIT_SENSOR_ST,
+      INIT_INSERT_ST, INIT_CHNG_ST, INIT_RELEASE_ST,
       POLL_ST, GET_CMD_ST, GET_TRACK_ST, GET_SECTOR_ST, GET_SIDE_ST,
       DECODE_ST,
       SET_ADDR0_ST, SET_ADDR1_ST, SET_ADDR2_ST, SET_LEN0_ST, SET_LEN1_ST,
@@ -186,15 +188,37 @@ begin
          else
             case state is
 
-               -- Bring the drive up: powered, type 1581, device address, and
-               -- release reset last.
+               -- Bring the drive up, then release its reset last.
+               --
+               -- Every one of these registers comes out of reset in a state
+               -- the drive cannot work in: unpowered, write-protected, with no
+               -- disk inserted and its own reset asserted (see the reset
+               -- branch of drive_registers.vhd). So each one has to be written
+               -- before the CPU is let go.
                when RESET_ST        => do_write(C_DRV_POWER,     X"01",     INIT_POWER_ST);
+
+               -- Harmless no-op for a 1581: drive_registers only latches the
+               -- type when its g_multi_mode generic is set, and nothing in the
+               -- 1581 reads drive_type. Written anyway so the sequence matches
+               -- what the Ultimate host software does.
                when INIT_POWER_ST   => do_write(C_DRV_DRIVETYPE, X"02",     INIT_TYPE_ST);
                when INIT_TYPE_ST    => do_write(C_DRV_ADDRESS,
                                                 "000000" & drive_addr_i,    INIT_ADDR_ST);
-               when INIT_ADDR_ST    => do_write(C_DRV_INSERTED,
+
+               -- The write-protect sensor. drive_registers exports this as
+               -- "write_prot_n <= sensor_i" straight into the WD177x, and it
+               -- resets to 0, which the controller reads as "protected" - so
+               -- without this write every write command fails.
+               when INIT_ADDR_ST    => do_write(C_DRV_SENSOR,
+                                          "0000000" & (not img_readonly_i),  INIT_SENSOR_ST);
+               when INIT_SENSOR_ST  => do_write(C_DRV_INSERTED,
                                                 "0000000" & img_mounted_i,  INIT_INSERT_ST);
-               when INIT_INSERT_ST  => do_write(C_DRV_RESET,     X"00",     INIT_RELEASE_ST);
+
+               -- Flag a disk change so the DOS re-reads the BAM instead of
+               -- trusting what it cached for whatever image was there before.
+               when INIT_INSERT_ST  => do_write(C_DRV_DISKCHNG,
+                                                "0000000" & img_mounted_i,  INIT_CHNG_ST);
+               when INIT_CHNG_ST    => do_write(C_DRV_RESET,     X"00",     INIT_RELEASE_ST);
                when INIT_RELEASE_ST => do_read (C_WD_CMD_FLAGS,             POLL_ST);
 
                -- Wait for the drive to ask for something

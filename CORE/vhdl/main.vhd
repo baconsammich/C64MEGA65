@@ -1595,8 +1595,17 @@ begin
          rst_i               => not reset_core_n,
          img_base_i          => C_C1581_IMG_BASE,
          img_mounted_i       => c1581_mounted,
-         img_readonly_i      => iec_img_readonly,
-         drive_addr_i        => "00",            -- device 8
+         -- The *.d81 lives in HyperRAM, loaded there by the ROM loader, and
+         -- nothing writes it back to the SD card. Present it as writable so
+         -- software that needs to write can run; those writes last until the
+         -- image is replaced or the core is reset.
+         img_readonly_i      => '0',
+
+         -- Device 9. The core's own C1541 is device 8 and answers on the IEC
+         -- bus whether or not a disk is mounted, so leaving the C1581 at "00"
+         -- would put two drives on the same number and both would reply to
+         -- the same ATN. Load from the 1581 with ,9 - e.g. LOAD"$",9.
+         drive_addr_i        => "01",            -- device 9
          iec_atn_i           => c64_iec_atn_out,
          iec_clk_i           => c64_iec_clk_in and hw_iec_clk_n_in,
          iec_data_i          => c64_iec_data_in and hw_iec_data_n_in,

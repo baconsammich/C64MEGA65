@@ -134,7 +134,9 @@ elif heap - needed < MARGIN:
 
 # ---- OPTM_G_LOAD_ROM menu order vs C_CRTROMS_MAN ---------------------------
 # The expected globals.vhd symbol for each kind of loadable item, keyed by the
-# prefix of the menu text. Add a line here when you add a loadable ROM item.
+# first word of the menu text. Add a line here when you add a loadable ROM
+# item. Keying on the first word rather than the whole label leaves room for a
+# suffix like the " (9)" that says which IEC device the C1581 answers on.
 ROM_ITEM_SYMBOL = {
     'D81': 'C_HMAP_1581_IMG',
     'PRG': 'C_DEV_C64_PRG',
@@ -166,8 +168,12 @@ if len(man_pairs) != man:
     die("C_CRTROMS_MAN holds %d entries but C_CRTROMS_MAN_NUM is %d"
         % (len(man_pairs), man))
 
+def item_kind(text):
+    label = text.split(':')[0].strip()        # " D81 (9):%s" -> "D81 (9)"
+    return label.split()[0].upper() if label.split() else ''
+
 for slot, (idx, text) in enumerate(load_rom_items):
-    kind = text.split(':')[0].strip().upper()
+    kind = item_kind(text)
     want = ROM_ITEM_SYMBOL.get(kind)
     got  = man_pairs[slot][1] if slot < len(man_pairs) else '<missing>'
     print("   slot %d  menu[%d] %-22r -> %s" % (slot, idx, text, got))
@@ -184,7 +190,7 @@ m = re.search(r'C64_CRTROM_MAN_D81\s+\.EQU\s+(0x[0-9A-Fa-f]+|\d+)', asm)
 if m:
     asm_slot = int(m.group(1), 0)
     d81_slot = next((s for s, (_, t) in enumerate(load_rom_items)
-                     if t.split(':')[0].strip().upper() == 'D81'), None)
+                     if item_kind(t) == 'D81'), None)
     print("   C64_CRTROM_MAN_D81 = %d (m2m-rom.asm), D81 is slot %s"
           % (asm_slot, d81_slot))
     if d81_slot is None:
