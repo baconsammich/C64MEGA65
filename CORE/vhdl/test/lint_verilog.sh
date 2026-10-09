@@ -75,15 +75,19 @@ if [ "$real_errors" -ne 0 ]; then
 fi
 
 # Confirm the hierarchy really was elaborated, rather than Verilator having
-# bailed out early and reported nothing.
-for expect in 'c1541' 'c1581'; do
-    grep -q "iec_drive\.$expect" /tmp/lint_iec.txt || {
-        echo "RESULT: $expect does not appear in the elaborated hierarchy -"
-        echo "        Verilator may have stopped before reaching it."
-        exit 1
-    }
-done
-echo "   both c1541 and c1581 present in the elaborated hierarchy"
+# bailed out early and reported nothing. Only the C1541 is instantiated: the
+# C1581 is still commented out in iec_drive.sv because its SD interface has
+# not been ported to the MEGA65's two clock domains (see doc/cmd_devices.md),
+# so its sources are linted but never appear in the hierarchy.
+grep -q "iec_drive\.c1541" /tmp/lint_iec.txt || {
+    echo "RESULT: c1541 does not appear in the elaborated hierarchy -"
+    echo "        Verilator may have stopped before reaching it."
+    exit 1
+}
+echo "   c1541 present in the elaborated hierarchy"
+if grep -q "iec_drive\.c1581" /tmp/lint_iec.txt; then
+    echo "   c1581 also present (it has been enabled)"
+fi
 
 echo
 echo "RESULT: no errors"

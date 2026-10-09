@@ -8,30 +8,43 @@ is no entry in [doc/inofficial.md](doc/inofficial.md) for it.
 So far this contains no user-visible changes to the core itself: it is
 tooling, test infrastructure and bug fixes that only affect simulation.
 
-## New Features
+## Attempted and reverted: simulated C1581 / `*.d81`
 
-* Simulated C1581 and `*.d81` disk image support, as a first step towards
-  emulating the CMD FD-2000/4000. The C1581 drive model already existed in the
-  `C64_MiSTerMEGA65` submodule but was switched off, and could not simply be
-  switched back on: three separate bugs prevented it from elaborating. See
-  [doc/cmd_devices.md](doc/cmd_devices.md).
+An attempt to enable the C1581 that already exists (but is disabled) in the
+`C64_MiSTerMEGA65` submodule was **reverted**: it does not meet timing, and
+the reason is not something a constraint can fix.
 
-  - The dormant instantiation in `iec_drive.sv` referenced `rom_addr`,
-    `rom_data`, `rom_wr` and `rom_std`, but those ports had been renamed to
-    `rom_addr_i` and friends, so it referred to signals that do not exist.
-  - `c1581_multi.sv` instantiated its switchable ROM as
-    `iecdrv_mem #(8,15,"./c1581_rom.mif")`, but `iecdrv_mem` takes only two
-    parameters. It now uses `iecdrv_mem_rom`, as `c1541_multi.sv` does.
-  - `c1541_multi.sv` had the same bug in its `PARPORT` branch, which would
-    have broken enabling the parallel port for DolphinDOS.
+The 1581's SD interface was never ported to the MEGA65's two clock domains.
+`c1581_drv.sv` declares a `clk_sys` port and never uses it, and `fdc1772.v`
+clocks its transfer FIFO entirely from the core clock while addressing it with
+`sd_buff_addr` and `sd_dout` from the QNICE domain. On MiSTer those are one
+clock, so there was no crossing to handle; on the MEGA65 they are 31.528 MHz
+and 50 MHz. The C1541 was adapted for this - `c1541_drv.sv` runs `c1541_track`
+on `clk_sys` and uses dual-clock buffers - which is why upstream has *no*
+`main_clk`/`qnice_clk` timing paths at all. Enabling the 1581 introduced the
+first ones, 112 of them, and they fail.
 
-  The five 1581 source files are now part of all four Vivado projects, and the
-  firmware recognises `*.d81` images (819200 bytes, or 822400 with an error
-  map) and reports image type 2 so that `iec_drive` selects the 1581. The
-  `C64_IMGFILE_D81` and `C64_IMGTYPE_D81` constants were already present in
-  `m2m-rom.asm`, unused.
+Measured with Vivado 2022.2 on an `xc7a200tfbg484-2`:
+
+| | WNS | Failing endpoints |
+|:--|----:|----:|
+| Upstream, unmodified | +0.322 ns | 0 |
+| With the C1581 enabled | -6.783 ns | 157 |
+
+Upstream closes timing with only 0.322 ns of margin, and the 1581 adds about
+3,100 LUTs, 4,200 registers and 18.5 BRAM tiles, so marginal framework paths
+go over as well. The work is kept on the `cmd-fd-1581-wip` branch. Finishing it
+means porting the FDC's SD interface to two clock domains the way the 1541's
+was; see [doc/cmd_devices.md](doc/cmd_devices.md).
 
 ## Bugfixes
+
+* `c1541_multi.sv` (submodule): the `PARPORT` branch passed `INITFILE` and
+  `FALLING_A` to `iecdrv_mem`, which declares neither - only `iecdrv_mem_rom`
+  does. Only reachable with `PARPORT=1`, which this core does not use, so
+  enabling the parallel port for DolphinDOS would have failed to elaborate.
+  Found by the new Verilator lint.
+
 
 * `M2M/vhdl/qnice_csr.vhd`: `char_index_v` was declared `natural range 1 to 32`
   but is assigned a five-bit address slice, so its legal range is 0 to 31 and
@@ -74,7 +87,7 @@ tooling, test infrastructure and bug fixes that only affect simulation.
 * `CORE/vhdl/test/lint_verilog.sh`: lints the Verilog and SystemVerilog half
   of the design with Verilator, which GHDL cannot read. This covers about 70
   files that previously had no automated checking at all, and it is what found
-  the three C1581 bugs above.
+  the `c1541_multi` parameter bug above.
 
 * `CORE/vhdl/test/make_synthetic_crt.py`: generates cartridge images for the
   testbenches that contain no copyrighted data, so CI needs no cartridge dump.

@@ -11,9 +11,11 @@ C64 for MEGA65 core:
 | CMD HD | SCSI hard drive on IEC, 32K boot ROM | Viable, needs a new drive model |
 | SuperCPU | 65816 accelerator, 128K ROM | Hardest by a wide margin |
 
-**Status:** step 1 is done - the dormant C1581 is enabled and `*.d81` images
-are recognised, which is the prerequisite for CMD FD. Everything else below is
-still a plan, written after surveying what the core already provides. Statements are marked *(verified)* where they were
+**Status:** step 1 was attempted and reverted. The dormant C1581 can be made
+to synthesise, but it does not close timing, because its SD interface was
+never ported to the MEGA65's two clock domains - see "What actually blocks the
+C1581" below. The work is on the `cmd-fd-1581-wip` branch. Everything else
+here is still a plan, written after surveying what the core already provides. Statements are marked *(verified)* where they were
 checked against the source, and *(unverified)* where they rest on general
 knowledge of the hardware and still need confirmation against the CMD
 documentation and VICE's implementation.
@@ -226,6 +228,54 @@ ROM socket instead of the Commodore 1581 DOS.
    assume 800K; higher-density FD formats may need work in `fdc1772.v` and a
    container format decision.
 
+### What actually blocks the C1581
+
+Measured, not guessed. Vivado 2022.2, `xc7a200tfbg484-2`:
+
+| | WNS | Failing endpoints | `main_clk`/`qnice_clk` paths |
+|:--|----:|----:|----:|
+| Upstream, unmodified | +0.322 ns | 0 | **none at all** |
+| With the C1581 enabled | -6.783 ns | 157 | 112, all failing |
+
+Upstream has *no* timing paths between the core clock and the QNICE clock.
+Enabling the 1581 creates the first ones. The reason:
+
+* `c1541_drv.sv` uses its `clk_sys` port three times - `.sd_clk(clk_sys)` for
+  both GCR buffers and `.clk(clk_sys)` for `c1541_track` - so the 1541's whole
+  SD side lives in the QNICE domain and the crossing is absorbed by dual-clock
+  buffers plus `iecdrv_sync` synchronisers. That is what the comment in
+  `CORE/CORE.xdc` means by "handled manually in the source code".
+* `c1581_drv.sv` declares `clk_sys` at line 47 and **never uses it**.
+  `fdc1772.v` has no `clk_sys` port at all: it instantiates
+  `fdc1772_dpram #(8,10) fifo` with `.clock(clkcpu)` - a single-clock RAM -
+  while driving port A with `sd_buff_addr`, `sd_dout` and
+  `sd_dout_strobe & sd_ack`, all of which are QNICE-domain signals. Its SD
+  transfer FSM also edge-detects `sd_ack` directly in the core clock domain.
+
+On MiSTer the drive clock and the SD clock are the same, so none of this
+mattered. On the MEGA65 they are 31.528 MHz and 50 MHz. The 1581's `clk_sys`
+port is a placeholder: the port was started and never finished.
+
+**This cannot be fixed with timing constraints.** A `set_max_delay` makes the
+report green while leaving a BRAM written with unsynchronised data from another
+clock domain, which risks silent disk corruption. It has to be fixed in RTL:
+
+1. Make `fdc1772_dpram` dual-clock, as `iecdrv_mem` does by wrapping M2M's
+   `dualport_2clk_ram` (see the comment at `iecdrv_misc.sv:7`).
+2. Give `fdc1772` a `clk_sys` input, clock the FIFO's SD-side port from it, and
+   move the SD transfer FSM into that domain - which is how `c1541_track` ends
+   up entirely on `clk_sys`. Synchronise `sd_ack` rather than edge-detecting it
+   across domains.
+3. Add `set_false_path` entries for the new synchronisers in `CORE/CORE.xdc`,
+   mirroring the existing C1541 block.
+
+Also budget for the area. The 1581 costs roughly 3,100 LUTs, 4,200 registers
+and 18.5 BRAM tiles, and upstream closes timing with 0.322 ns to spare, so even
+once the crossing is gone the design may need implementation-strategy work.
+Both drive models stay resident because the type is chosen at mount time; if
+that proves too expensive, the fallback is a build-time choice between them,
+which costs runtime switching.
+
 **Risks.** How close the FD DOS is to running on a 1581's hardware model is
 the central unknown - if the FD's register map or FDC differs materially, this
 becomes a new drive model rather than a ROM swap. The FD-2000 at 800K is the
@@ -378,7 +428,8 @@ Suggested order, and what to prototype first
    dormant 1581 actually works - which everything in the CMD FD plan depends
    on. Do this before writing any CMD-specific code.
 2. **RAMLink.** Self-contained, no submodule fork, reuses two proven patterns.
-3. **CMD FD DOS on the working 1581.** Only meaningful once step 1 is done.
+3. **CMD FD DOS on the working 1581.** Only meaningful once the C1581
+   SD-interface port below is finished.
 4. **CMD HD.** A new drive model; worth it once the IEC drive path is familiar.
 5. **SuperCPU.** Begin with a written evaluation of T65's 65816 mode and a BRAM
    utilisation measurement. Do not start RTL until both come back favourably.
