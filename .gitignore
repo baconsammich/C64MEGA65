@@ -26,3 +26,5 @@ CORE/vhdl/test/*.cf
 CORE/vhdl/test/*.ghw
 CORE/vhdl/test/output.txt
 CORE/C64_MiSTerMEGA65/rtl/roms/*.mif.bin
+vivado*.jou
+vivado*.log
