@@ -128,7 +128,7 @@ Both checkout locations can be overridden on the command line:
 ```bash
 cd CORE/vhdl/test
 make sim                                   # DUT=sw_cartridge_wrapper (default)
-make sim DUT=crt_parser
+make sim DUT=crt_parser                    # self-contained, no cartridge needed
 make sim CRT_DIR=/path/to/crts CRT_FILE=my_cartridge.crt
 make show                                  # view the waveform in gtkwave
 ```
@@ -136,6 +136,53 @@ make show                                  # view the waveform in gtkwave
 `sw_cartridge_wrapper` needs a `*.crt` file to chew on; point `CRT_DIR` and
 `CRT_FILE` at one. A successful run reports `Finished parsing CRT file` and
 then shows the CPU fetching from the KERNAL reset vector at `$FCE2`.
+
+Note that a clean exit alone does not mean the cartridge was accepted: an
+image the parser rejects still ends the simulation tidily. Always check for
+`Finished parsing CRT file`.
+
+If you have no cartridge to hand - or want one that is safe to commit -
+generate a synthetic image. These carry no copyrighted data, just a valid
+header, valid CHIP packets and a payload with the CBM80 autostart signature:
+
+```bash
+./make_synthetic_crt.py                      # generic 8K
+./make_synthetic_crt.py --type generic16
+./make_synthetic_crt.py --type ocean         # 15 banks, exercises the bank cache
+```
+
+The `ocean` layout is deliberately 15 banks: more than the eight the BRAM
+cache holds, so bank eviction gets exercised, but still inside the 128 KiB
+HyperRAM model that `tb_sw_cartridge_wrapper` instantiates. A larger image is
+silently truncated by `avm_rom` and the parse then never completes, so the
+generator refuses to produce one unless you pass `--allow-oversize`.
+
+### Checking the whole tree at once
+
+```bash
+cd CORE/vhdl/test
+./analyze_all.sh
+```
+
+This elaborates every entity in `CORE/vhdl` and `M2M/vhdl` (97 of them, in
+about ten seconds). Elaborating rather than merely analysing means each
+entity's whole dependency tree gets type-checked. It is a useful gate because
+GHDL enforces parts of the VHDL LRM that Vivado lets slide, so it catches
+defects a successful Vivado build does not - but it checks neither timing nor
+resources, so it is no substitute for synthesis.
+
+The entities that cannot elaborate under GHDL are listed, with the reason, in
+an expected-failure list inside the script. It fails only if something *not*
+on that list breaks, and tells you when a listed entity starts passing so the
+list can be pruned.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs the above on every push and pull request:
+`analyze_all.sh`, then `tb_crt_parser`, then `tb_sw_cartridge_wrapper`
+against each synthetic cartridge. It takes well under a minute and needs no
+hardware, so it complements rather than replaces the manual hardware tests in
+`tests/`.
 
 ### Which testbenches work under GHDL
 

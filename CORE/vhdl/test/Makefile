@@ -1,3 +1,9 @@
+# The sim target pipes ghdl through tee, which would otherwise mask a failing
+# simulation behind tee's exit status. Run recipes under bash with pipefail so
+# a simulation failure actually fails the build.
+SHELL := /bin/bash
+.SHELLFLAGS := -o pipefail -c
+
 SRC += ../crt_parser.vhd
 SRC += ../crt_cacher.vhd
 SRC += ../crt_loader.vhd
@@ -46,7 +52,11 @@ CRT_DIR  ?= $(HOME)/Downloads
 
 #DUT ?= crt_parser
 DUT ?= sw_cartridge_wrapper
-GENERIC ?= -gG_FILE_NAME=$(CRT_DIR)/$(CRT_FILE)
+# Only sw_cartridge_wrapper takes a cartridge file. crt_parser builds its own
+# stimulus and has no generics at all, and ghdl rejects -g for a generic the
+# testbench does not declare, so select the generics per DUT.
+GENERIC_sw_cartridge_wrapper := -gG_FILE_NAME=$(CRT_DIR)/$(CRT_FILE)
+GENERIC ?= $(GENERIC_$(DUT))
 
 
 TB = tb_$(DUT)

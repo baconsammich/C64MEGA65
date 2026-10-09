@@ -1,0 +1,89 @@
+name: CI
+
+# Simulation-level regression gate. This is deliberately cheap (well under a
+# minute) and does NOT replace synthesis or the hardware tests in tests/ - it
+# catches VHDL defects that a successful Vivado build does not, because GHDL
+# enforces parts of the LRM that Vivado lets slide.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  simulate:
+    name: GHDL analysis and testbenches
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the core (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install GHDL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ghdl
+          ghdl --version
+
+      - name: Check out external simulation dependencies
+        env:
+          # Must be a revision whose cpu_65c02 matches core_sim.vhd. See the
+          # "Running the VHDL testbenches" section of doc/developer.md.
+          C65C02_REV: caec0fc
+        run: |
+          git clone --no-checkout https://github.com/MJoergen/65c02.git "$HOME/65c02"
+          git -C "$HOME/65c02" checkout "$C65C02_REV"
+          git clone --depth 1 https://github.com/fransschreuder/xpm_vhdl.git "$HOME/xpm_vhdl"
+          mkdir -p "$HOME/crt"
+          # Export for every later step, so the paths are defined in one place.
+          echo "C65C02_DIR=$HOME/65c02"     >> "$GITHUB_ENV"
+          echo "XPM_TOP_DIR=$HOME/xpm_vhdl" >> "$GITHUB_ENV"
+          echo "CRT_DIR=$HOME/crt"          >> "$GITHUB_ENV"
+
+      - name: Generate the C64 ROM binary that core_sim.vhd expects
+        working-directory: CORE/vhdl/test
+        run: ./make_rom_bin.sh
+
+      - name: Generate synthetic cartridge images
+        working-directory: CORE/vhdl/test
+        run: |
+          ./make_synthetic_crt.py --type generic8  -o "$CRT_DIR/generic8.crt"
+          ./make_synthetic_crt.py --type generic16 -o "$CRT_DIR/generic16.crt"
+          ./make_synthetic_crt.py --type ocean     -o "$CRT_DIR/ocean.crt"
+
+      # Elaborating every entity type-checks each one's whole dependency tree.
+      # Fails only on a regression against the documented expected-failure list.
+      - name: Elaborate every VHDL entity
+        working-directory: CORE/vhdl/test
+        run: ./analyze_all.sh
+
+      # Self-contained and self-checking: builds its own stimulus and asserts
+      # on the results, so it needs no external cartridge file.
+      - name: Run tb_crt_parser
+        working-directory: CORE/vhdl/test
+        run: make sim DUT=crt_parser
+
+      - name: Run tb_sw_cartridge_wrapper against each synthetic cartridge
+        working-directory: CORE/vhdl/test
+        run: |
+          for crt in generic8 generic16 ocean; do
+            echo "::group::$crt"
+            make clean
+            make sim DUT=sw_cartridge_wrapper CRT_FILE="$crt.crt"
+            # The parse must actually succeed. A clean exit is not enough on
+            # its own: a truncated or rejected image still ends tidily.
+            grep -q "Finished parsing CRT file" output.txt \
+              || { echo "::error::$crt did not parse"; exit 1; }
+            echo "::endgroup::"
+          done
+
+      - name: Upload waveforms on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waveforms
+          path: CORE/vhdl/test/*.ghw
+          if-no-files-found: ignore
+          retention-days: 7
