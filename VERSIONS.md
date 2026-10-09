@@ -1,3 +1,74 @@
+Version 5.3 - in development
+============================
+
+Unreleased. Builds from this branch identify themselves as `WIP-V5.3-Ax` in
+the core's "About & Help" menu; no bitstream has been published yet, so there
+is no entry in [doc/inofficial.md](doc/inofficial.md) for it.
+
+So far this contains no user-visible changes to the core itself: it is
+tooling, test infrastructure and bug fixes that only affect simulation.
+
+## Bugfixes
+
+* `M2M/vhdl/qnice_csr.vhd`: `char_index_v` was declared `natural range 1 to 32`
+  but is assigned a five-bit address slice, so its legal range is 0 to 31 and
+  `str2data` treats the index as zero-based. Because it is computed
+  unconditionally at the top of a `process(all)`, before the `qnice_csr_o`
+  guard, any read whose low five address bits were zero aborted a simulation
+  with a bound check failure. Synthesis ignores subtype bounds, so no hardware
+  behaviour changes.
+
+* `CORE/vhdl/prg_loader.vhd`: the `case` on `qnice_csr` covered only `'0'` and
+  `'1'`, leaving the other seven `std_logic` values uncovered, which GHDL
+  rejects outright. Added `when others => null`, which cannot change the
+  synthesised result.
+
+* `M2M/vhdl/democore/democore_video.vhd`: the elements of the `bitmaps`
+  aggregate were ambiguous. Since `bitmap_vector_t` is an array *of*
+  `std_logic_vector`, a concatenation can be read either as one wide vector or
+  as a multi-element array. Each element is now qualified with
+  `std_logic_vector'(...)`. Affects the framework's demo core only, which is
+  not part of any C64 build.
+
+* `CORE/vhdl/test/Makefile`: three problems that made the testbenches
+  unusable as checked in. `SRC` was missing `M2M/vhdl/qnice_csr.vhd`, so
+  nothing built; the `sim` target piped ghdl through `tee`, so a failing
+  simulation could not fail the build; and `GENERIC` was passed to every DUT,
+  so `make sim DUT=crt_parser` always failed because that testbench declares
+  no generics.
+
+## Test and build infrastructure
+
+* Continuous integration (`.github/workflows/ci.yml`): on every push and pull
+  request, GHDL analyses the tree and runs the cartridge testbenches. It takes
+  well under a minute and needs no hardware, so it complements rather than
+  replaces the manual hardware tests in `tests/`.
+
+* `CORE/vhdl/test/analyze_all.sh`: elaborates all 97 VHDL entities in about ten
+  seconds, with a documented list of the entities that cannot elaborate under
+  GHDL so the gate only fires on a genuine regression.
+
+* `CORE/vhdl/test/make_synthetic_crt.py`: generates cartridge images for the
+  testbenches that contain no copyrighted data, so CI needs no cartridge dump.
+
+* `CORE/vhdl/test/make_rom_bin.sh`: derives the raw C64 ROM binary that
+  `core_sim.vhd` expects from the committed `*.mif.hex`, so no Quartus
+  installation is needed.
+
+* The testbenches' two external dependencies are now documented and their
+  paths overridable, instead of being hardcoded to one developer's home
+  directory.
+
+## Documentation
+
+* `doc/developer.md`: how to run the testbenches, the external checkouts they
+  need, why the 65c02 checkout must be pinned, which testbenches are
+  meaningful under GHDL, and the cases where GHDL is stricter than Vivado.
+
+* `doc/cmd_devices.md`: design notes towards emulating the Creative Micro
+  Designs peripherals - CMD FD, RAMLink, CMD HD and the SuperCPU. Plan only,
+  nothing implemented.
+
 Version 5.2 - April 28, 2025
 ============================
 
