@@ -27,6 +27,8 @@
 # Files picked up from --assets, if present:
 #   JiffyDOS_C64.bin      -> c64/jd-c64.bin     (C64 JiffyDOS KERNAL)
 #   JiffyDOS_1541-II.bin  -> c64/jd-c1541.bin   (1541 JiffyDOS DOS)
+#   1581.rom              -> c64/1581.rom       (C1581 DOS; JiffyDOS_1581.bin
+#                                                used only if 1581.rom absent)
 #   *.d64 *.d81 *.crt *.prg *.g64 -> c64/
 #   MEGA65.ROM and *.M65  -> root (MEGA65 system files)
 ##############################################################################
@@ -112,6 +114,15 @@ if [ -n "$ASSETS" ] && [ -d "$ASSETS" ]; then
     # JiffyDOS: the core looks for these exact names (see CORE/vhdl/globals.vhd)
     copy_if "$ASSETS/JiffyDOS_C64.bin"     "$OUT/c64/jd-c64.bin"   "c64/jd-c64.bin   (JiffyDOS C64)"
     copy_if "$ASSETS/JiffyDOS_1541-II.bin" "$OUT/c64/jd-c1541.bin" "c64/jd-c1541.bin (JiffyDOS 1541)"
+    # The C1581 fetches its DOS out of HyperRAM, loaded from this file at boot.
+    # Prefer the stock DOS; fall back to a JiffyDOS 1581 image if that is all
+    # there is. Both land on the same filename, so pick one rather than letting
+    # the second silently overwrite the first.
+    if [ -f "$ASSETS/1581.rom" ]; then
+        copy_if "$ASSETS/1581.rom"          "$OUT/c64/1581.rom"     "c64/1581.rom     (C1581 DOS)"
+    else
+        copy_if "$ASSETS/JiffyDOS_1581.bin" "$OUT/c64/1581.rom"     "c64/1581.rom     (JiffyDOS 1581)"
+    fi
 
     echo "disks  :"
     n=0

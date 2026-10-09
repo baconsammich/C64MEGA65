@@ -11,11 +11,16 @@ C64 for MEGA65 core:
 | CMD HD | SCSI hard drive on IEC, 32K boot ROM | Viable, needs a new drive model |
 | SuperCPU | 65816 accelerator, 128K ROM | Hardest by a wide margin |
 
-**Status:** step 1 was attempted and reverted. The dormant C1581 can be made
-to synthesise, but it does not close timing, because its SD interface was
-never ported to the MEGA65's two clock domains - see "What actually blocks the
-C1581" below. The work is on the `cmd-fd-1581-wip` branch. Everything else
-here is still a plan, written after surveying what the core already provides. Statements are marked *(verified)* where they were
+**Status:** step 1 is **done, in hardware terms**, but by a different route
+than first planned. The MiSTer C1581 was abandoned - see "What actually blocks
+the C1581" below - and replaced with the 1541 Ultimate's VHDL drive, which is
+single-clock and reads its disk image out of HyperRAM. That builds, closes
+timing with more margin than upstream has (+0.381 ns against +0.322 ns), and
+costs no extra block RAM. What has *not* been done is trying it on real
+hardware with a real `*.d81`. See `CORE/vhdl/1581/README.md`.
+
+Everything else here is still a plan, written after surveying what the core
+already provides. Statements are marked *(verified)* where they were
 checked against the source, and *(unverified)* where they rest on general
 knowledge of the hardware and still need confirmation against the CMD
 documentation and VICE's implementation.
