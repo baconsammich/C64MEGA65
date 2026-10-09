@@ -16,6 +16,11 @@ library work;
 use work.vdrives_pkg.all;
 use work.globals.all;
 
+-- The C1581 subsystem lives in its own VHDL library, because Gideon's 6502
+-- defines an entity called "alu" and so does QNICE; in a single library the
+-- two collide and Vivado black-boxes whichever loses.
+library c1581_lib;
+
 entity main is
    generic (
       G_BOARD                : string;                     -- Which platform are we running on.
@@ -293,6 +298,47 @@ architecture synthesis of main is
    signal iec_img_size         : std_logic_vector(31 downto 0);
    signal iec_img_type         : std_logic_vector( 1 downto 0);
 
+   -- C1581 (CORE/vhdl/1581, from the 1541 Ultimate). Its disk image lives in
+   -- HyperRAM rather than in a mount buffer, because the drive DMAs its own
+   -- sectors instead of being handed blocks; see CORE/vhdl/1581/README.md.
+   -- Window bases as the sub-blocks want them: the memory bridge takes a
+   -- 16-bit word address (like reu_mapper's G_BASE_ADDRESS), while the disk
+   -- server computes a byte address for the WD177x DMA registers.
+   constant C_HMAP_1581_MEM_W  : std_logic_vector(31 downto 0) :=
+                                 X"0000" & C_HMAP_1581_MEM(9 downto 0) & "000000";
+   constant C_C1581_IMG_BASE   : std_logic_vector(25 downto 0) :=
+                                 C_HMAP_1581_IMG(9 downto 0) & X"0000";
+
+   signal c1581_mounted        : std_logic;
+   signal c1581_act_led        : std_logic;
+   signal c1581_busy           : std_logic;
+   signal c1581_err            : std_logic;
+   signal c1581_iec_atn_o      : std_logic;
+   signal c1581_iec_clk_o      : std_logic;
+   signal c1581_iec_data_o     : std_logic;
+   signal c1581_iec_srq_o      : std_logic;
+
+   signal c1581_avm_write      : std_logic;
+   signal c1581_avm_read       : std_logic;
+   signal c1581_avm_address    : std_logic_vector(31 downto 0);
+   signal c1581_avm_writedata  : std_logic_vector(15 downto 0);
+   signal c1581_avm_byteenable : std_logic_vector( 1 downto 0);
+   signal c1581_avm_burstcount : std_logic_vector( 7 downto 0);
+   signal c1581_avm_readdata   : std_logic_vector(15 downto 0);
+   signal c1581_avm_rdvalid    : std_logic;
+   signal c1581_avm_waitreq    : std_logic;
+
+   -- reu_mapper's own master port, now arbitrated with the C1581's
+   signal reu_avm_write        : std_logic;
+   signal reu_avm_read         : std_logic;
+   signal reu_avm_address      : std_logic_vector(31 downto 0);
+   signal reu_avm_writedata    : std_logic_vector(15 downto 0);
+   signal reu_avm_byteenable   : std_logic_vector( 1 downto 0);
+   signal reu_avm_burstcount   : std_logic_vector( 7 downto 0);
+   signal reu_avm_readdata     : std_logic_vector(15 downto 0);
+   signal reu_avm_rdvalid      : std_logic;
+   signal reu_avm_waitreq      : std_logic;
+
    signal iec_drives_reset     : std_logic_vector(G_VDNUM - 1 downto 0);
    signal vdrives_mounted      : std_logic_vector(G_VDNUM - 1 downto 0);
    signal cache_dirty          : std_logic_vector(G_VDNUM - 1 downto 0);
@@ -510,7 +556,7 @@ begin
 
    -- the drive led is on if either the C64 is writing to the virtual disk (cached in RAM)
    -- or if the dirty cache is dirty and/orcurrently being flushed to the SD card
-   drive_led_o <= c64_drive_led when unsigned(cache_dirty) = 0 else
+   drive_led_o <= (c64_drive_led or c1581_act_led) when unsigned(cache_dirty) = 0 else
                   '1';
 
    --------------------------------------------------------------------------------------------------
@@ -732,10 +778,10 @@ begin
          cnt1_o      => open,
 
          -- IEC
-         iec_clk_i   => c64_iec_clk_in and hw_iec_clk_n_in,
+         iec_clk_i   => c64_iec_clk_in and hw_iec_clk_n_in and c1581_iec_clk_o,
          iec_clk_o   => c64_iec_clk_out,
          iec_atn_o   => c64_iec_atn_out,
-         iec_data_i  => c64_iec_data_in and hw_iec_data_n_in,
+         iec_data_i  => c64_iec_data_in and hw_iec_data_n_in and c1581_iec_data_o,
          iec_data_o  => c64_iec_data_out,
 
          -- Cassette drive
@@ -1456,16 +1502,101 @@ begin
          reu_din_o           => sim_reu_din,
          reu_we_i            => sim_reu_we,
          reu_cs_i            => sim_reu_cs,
-         avm_write_o         => map_write,
-         avm_read_o          => map_read,
-         avm_address_o       => map_address,
-         avm_writedata_o     => map_writedata,
-         avm_byteenable_o    => map_byteenable,
-         avm_burstcount_o    => map_burstcount,
-         avm_readdata_i      => map_readdata,
-         avm_readdatavalid_i => map_readdatavalid,
-         avm_waitrequest_i   => map_waitrequest
+         avm_write_o         => reu_avm_write,
+         avm_read_o          => reu_avm_read,
+         avm_address_o       => reu_avm_address,
+         avm_writedata_o     => reu_avm_writedata,
+         avm_byteenable_o    => reu_avm_byteenable,
+         avm_burstcount_o    => reu_avm_burstcount,
+         avm_readdata_i      => reu_avm_readdata,
+         avm_readdatavalid_i => reu_avm_rdvalid,
+         avm_waitrequest_i   => reu_avm_waitreq
       ); -- reu_mapper_inst
+
+   ---------------------------------------------------------------------------
+   -- The REU and the C1581 both master HyperRAM from the core clock domain, so
+   -- they are arbitrated here before the cache. Only one of them is ever busy
+   -- in practice - the REU is only used in expansion-port mode 1, the C1581
+   -- only when a *.d81 is mounted - so a simple priority arbiter is enough.
+   ---------------------------------------------------------------------------
+   i_avm_arbit_main : entity work.avm_arbit
+      generic map (
+         G_PREFER_SWAP  => false,
+         G_FREQ_HZ      => CORE_CLK_SPEED,
+         G_ADDRESS_SIZE => 32,
+         G_DATA_SIZE    => 16
+      )
+      port map (
+         clk_i                  => clk_main_i,
+         rst_i                  => not reset_core_n,
+         s0_avm_write_i         => reu_avm_write,
+         s0_avm_read_i          => reu_avm_read,
+         s0_avm_address_i       => reu_avm_address,
+         s0_avm_writedata_i     => reu_avm_writedata,
+         s0_avm_byteenable_i    => reu_avm_byteenable,
+         s0_avm_burstcount_i    => reu_avm_burstcount,
+         s0_avm_readdata_o      => reu_avm_readdata,
+         s0_avm_readdatavalid_o => reu_avm_rdvalid,
+         s0_avm_waitrequest_o   => reu_avm_waitreq,
+         s1_avm_write_i         => c1581_avm_write,
+         s1_avm_read_i          => c1581_avm_read,
+         s1_avm_address_i       => c1581_avm_address,
+         s1_avm_writedata_i     => c1581_avm_writedata,
+         s1_avm_byteenable_i    => c1581_avm_byteenable,
+         s1_avm_burstcount_i    => c1581_avm_burstcount,
+         s1_avm_readdata_o      => c1581_avm_readdata,
+         s1_avm_readdatavalid_o => c1581_avm_rdvalid,
+         s1_avm_waitrequest_o   => c1581_avm_waitreq,
+         m_avm_write_o          => map_write,
+         m_avm_read_o           => map_read,
+         m_avm_address_o        => map_address,
+         m_avm_writedata_o      => map_writedata,
+         m_avm_byteenable_o     => map_byteenable,
+         m_avm_burstcount_o     => map_burstcount,
+         m_avm_readdata_i       => map_readdata,
+         m_avm_readdatavalid_i  => map_readdatavalid,
+         m_avm_waitrequest_i    => map_waitrequest
+      ); -- i_avm_arbit_main
+
+   ---------------------------------------------------------------------------
+   -- C1581 (*.d81). Mounted when the Shell reports a disk image of type 2.
+   ---------------------------------------------------------------------------
+   c1581_mounted <= vdrives_mounted(0) when iec_img_type = "10" else '0';
+
+   i_c1581_wrapper : entity c1581_lib.c1581_wrapper
+      generic map (
+         G_CLK_FREQ_HZ => CORE_CLK_SPEED,
+         G_MEM_BASE    => C_HMAP_1581_MEM_W
+      )
+      port map (
+         clk_i               => clk_main_i,
+         rst_i               => not reset_core_n,
+         img_base_i          => C_C1581_IMG_BASE,
+         img_mounted_i       => c1581_mounted,
+         img_readonly_i      => iec_img_readonly,
+         drive_addr_i        => "00",            -- device 8
+         iec_atn_i           => c64_iec_atn_out,
+         iec_clk_i           => c64_iec_clk_in and hw_iec_clk_n_in,
+         iec_data_i          => c64_iec_data_in and hw_iec_data_n_in,
+         iec_srq_i           => '1',
+         iec_atn_o           => c1581_iec_atn_o,
+         iec_clk_o           => c1581_iec_clk_o,
+         iec_data_o          => c1581_iec_data_o,
+         iec_srq_o           => c1581_iec_srq_o,
+         c64_reset_n_i       => reset_core_n,
+         act_led_o           => c1581_act_led,
+         busy_o              => c1581_busy,
+         err_o               => c1581_err,
+         avm_write_o         => c1581_avm_write,
+         avm_read_o          => c1581_avm_read,
+         avm_address_o       => c1581_avm_address,
+         avm_writedata_o     => c1581_avm_writedata,
+         avm_byteenable_o    => c1581_avm_byteenable,
+         avm_burstcount_o    => c1581_avm_burstcount,
+         avm_readdata_i      => c1581_avm_readdata,
+         avm_readdatavalid_i => c1581_avm_rdvalid,
+         avm_waitrequest_i   => c1581_avm_waitreq
+      ); -- i_c1581_wrapper
 
    avm_cache_inst : entity work.avm_cache
       generic map (

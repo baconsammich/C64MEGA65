@@ -848,6 +848,237 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
+      <File Path="$PPRDIR/vhdl/1581/busses/io_bus_pkg.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/busses/io_bus_splitter.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/busses/io_dummy.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/busses/mem_bus_arbiter_pri.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/busses/mem_bus_pkg.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/busses/mem_to_mem32.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/busses/sync_fifo.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/alu.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/bit_cpx_cpy.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/cpu6502.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/data_oper.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/implied.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/pkg_6502_decode.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/pkg_6502_defs.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/proc_control.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/proc_core.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/proc_interrupt.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/proc_registers.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/cpu6502/shifter.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/c1541_pkg.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/c1541_timing.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/c1581_drive.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/cia_pkg.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/cia_registers.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/cia_timer.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/cpu_part_1581.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/drive_registers.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/floppy_sound.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/stepper.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/drive/wd177x.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/glue/c1581_disk_server.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/glue/c1581_mem_bridge.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/vhdl/1581/glue/c1581_wrapper.vhd">
+        <FileInfo SFType="VHDL">
+          <Attr Name="Library" Val="c1581_lib"/>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
       <File Path="$PPRDIR/vhdl/main.vhd">
         <FileInfo SFType="VHDL2008">
           <Attr Name="UsedIn" Val="synthesis"/>

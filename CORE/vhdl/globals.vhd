@@ -97,6 +97,12 @@ constant C_DEV_C64_KERNAL_C1541  : std_logic_vector(15 downto 0) := x"0106";    
 constant C_HMAP_M2M              : std_logic_vector(15 downto 0) := x"0000";     -- Reserved for the M2M framework
 constant C_HMAP_CRT              : std_logic_vector(15 downto 0) := x"0200";     -- Contains CRT files
 
+-- C1581: the drive's own ROM/RAM window, and the mounted *.d81 image. The
+-- drive DMAs its own sectors out of HyperRAM rather than being handed blocks
+-- by QNICE, which is what keeps it in a single clock domain.
+constant C_HMAP_1581_MEM         : std_logic_vector(15 downto 0) := x"0300";     -- drive ROM/RAM
+constant C_HMAP_1581_IMG         : std_logic_vector(15 downto 0) := x"0400";     -- *.d81 image
+
 ----------------------------------------------------------------------------------------------------------
 -- Virtual Drive Management System
 ----------------------------------------------------------------------------------------------------------

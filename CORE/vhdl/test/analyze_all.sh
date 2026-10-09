@@ -10,8 +10,9 @@
 #
 # It is NOT a substitute for synthesis: it never checks timing or resources.
 #
-# CORE/vhdl/1581 is excluded: those vendored sources need --std=93 -fsynopsys
-# -frelaxed, so they have their own gate in analyze_1581.sh.
+# CORE/vhdl/1581 is excluded - both the vendored sources and our glue in
+# 1581/glue need --std=93 -fsynopsys -frelaxed, so the whole subsystem has its
+# own gate in analyze_1581.sh.
 #
 # Usage: ./analyze_all.sh
 #

@@ -27,7 +27,9 @@ trap 'rm -rf "$WORKDIR"' EXIT
 command -v ghdl >/dev/null || { echo "ERROR: ghdl not found in PATH."; exit 1; }
 [ -d "$SRC" ] || { echo "ERROR: $SRC missing."; exit 1; }
 
-GHDL_OPTS="--std=93 -fsynopsys -frelaxed"
+# The subsystem gets its own library: Gideon's 6502 and QNICE both
+# define an entity called "alu", which collide in a single library.
+GHDL_OPTS="--std=93 -fsynopsys -frelaxed --work=c1581_lib"
 
 # Analysis order matters: packages first, then leaves, then the top. GHDL has
 # no automatic ordering for a plain -a sequence.
@@ -64,6 +66,9 @@ drive/c1541_timing.vhd
 drive/wd177x.vhd
 drive/cpu_part_1581.vhd
 drive/c1581_drive.vhd
+glue/c1581_mem_bridge.vhd
+glue/c1581_disk_server.vhd
+glue/c1581_wrapper.vhd
 "
 
 echo "== analysing the vendored C1581 =="
@@ -84,8 +89,8 @@ echo "   analysed $ok file(s), $fail failed"
 ##############################################################################
 # Elaborating type-checks the whole hierarchy below the drive.
 ##############################################################################
-echo "== elaborating c1581_drive =="
-if ! ghdl -m --workdir="$WORKDIR" $GHDL_OPTS c1581_drive >"$WORKDIR/el" 2>&1; then
+echo "== elaborating c1581_wrapper (drive + disk server + memory bridge) =="
+if ! ghdl -m --workdir="$WORKDIR" $GHDL_OPTS c1581_wrapper >"$WORKDIR/el" 2>&1; then
     echo "   FAIL"
     grep -m8 "error:" "$WORKDIR/el" | sed 's/^/      /'
     echo
@@ -99,7 +104,7 @@ if [ "$errs" -ne 0 ]; then
     echo "RESULT: $errs elaboration error(s)"
     exit 1
 fi
-echo "   c1581_drive elaborates cleanly"
+echo "   c1581_wrapper elaborates cleanly"
 
 echo
 echo "RESULT: no errors"
