@@ -100,8 +100,23 @@ constant C_HMAP_CRT              : std_logic_vector(15 downto 0) := x"0200";    
 -- C1581: the drive's own ROM/RAM window, and the mounted *.d81 image. The
 -- drive DMAs its own sectors out of HyperRAM rather than being handed blocks
 -- by QNICE, which is what keeps it in a single clock domain.
-constant C_HMAP_1581_MEM         : std_logic_vector(15 downto 0) := x"0300";     -- drive ROM/RAM
-constant C_HMAP_1581_IMG         : std_logic_vector(15 downto 0) := x"0400";     -- *.d81 image
+--
+-- A window is 4k words = 8 KB, and the HyperRAM is 8 MB, so windows run from
+-- x"000" to x"3FF" - x"400" and beyond is off the end and the address mask in
+-- reu_mapper/c1581_mem_bridge would wrap it onto the framework's own area.
+-- The full map, in bytes:
+--
+--   0x000000 .. 0x3FFFFF   M2M framework (ascal frame buffers)
+--   0x400000 .. 0x47FFFF   simulated 1750 REU, 512 KB   (window x"200")
+--   0x400000 .. 0x400000+n simulated cartridge, n = CRT file size (same base;
+--                          the REU and a *.crt are mutually exclusive)
+--   0x728000 .. 0x737FFF   C1581 drive ROM and RAM, 64 KB (window x"394")
+--   0x738000 .. 0x7FFFFF   C1581 *.d81 image, 819200 bytes (window x"39C")
+--
+-- The C1581 is packed against the top so that it stays clear of a *.crt of up
+-- to 3.3 MB, which is far larger than any real cartridge.
+constant C_HMAP_1581_MEM         : std_logic_vector(15 downto 0) := x"0394";     -- drive ROM/RAM, 8 windows
+constant C_HMAP_1581_IMG         : std_logic_vector(15 downto 0) := x"039C";     -- *.d81 image, 100 windows
 
 ----------------------------------------------------------------------------------------------------------
 -- Virtual Drive Management System

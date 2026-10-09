@@ -183,12 +183,22 @@ _CRTRI_A_LOOP   MOVE    LOG_STR_ARLINE1, R8
                 MOVE    0, @R3                  ; ..and set 4k window to zero
                 RBRA    _CRTRI_A5, 1
 
-_CRTRI_A2       CMP    CRTROM_TYPE_HYPRAM, R2   ; HyperRAM device?
+                ; The entry type was read into R8 above, so that is what these
+                ; have to compare against: R2 and R3 are the write pointers
+                ; into the device-id and 4k-window arrays. Comparing R2 meant
+                ; the HyperRAM case could never match and every
+                ; C_CRTROMTYPE_HYPERRAM entry fell through to FATAL with error
+                ; code 0001. The HyperRAM case also has to branch to _CRTRI_A5
+                ; once handled, instead of falling into the SDRAM test. The
+                ; equivalent loop for manually loadable ROMs (_CRTRI_L4) always
+                ; had this right.
+_CRTRI_A2       CMP    CRTROM_TYPE_HYPRAM, R8   ; HyperRAM device?
                 RBRA    _CRTRI_A3, !Z           ; no
                 MOVE   M2M$HYPERRAM, @R2        ; yes: use HyperRAM dev. id..
                 MOVE   @R1++, @R3               ; ..and store the 4k window
+                RBRA    _CRTRI_A5, 1
 
-_CRTRI_A3       CMP     CRTROM_TYPE_SDRAM, R2   ; SRAM device?
+_CRTRI_A3       CMP     CRTROM_TYPE_SDRAM, R8   ; SRAM device?
                 RBRA   _CRTRI_A4, !Z            ; no
                                                 ; @TODO: future R4 boards
                                                 ; for now: fatal

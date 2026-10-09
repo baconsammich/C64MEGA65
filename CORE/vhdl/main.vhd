@@ -306,13 +306,15 @@ architecture synthesis of main is
    -- C1581 (CORE/vhdl/1581, from the 1541 Ultimate). Its disk image lives in
    -- HyperRAM rather than in a mount buffer, because the drive DMAs its own
    -- sectors instead of being handed blocks; see CORE/vhdl/1581/README.md.
-   -- Window bases as the sub-blocks want them: the memory bridge takes a
-   -- 16-bit word address (like reu_mapper's G_BASE_ADDRESS), while the disk
-   -- server computes a byte address for the WD177x DMA registers.
+   -- Window bases as the sub-blocks want them. A window is 4k words, so the
+   -- word address is the window number shifted left by 12 - the same
+   -- derivation mega65.vhd uses for the CRT base. The memory bridge wants that
+   -- word address (like reu_mapper's G_BASE_ADDRESS); the disk server wants a
+   -- byte address, which is one bit further left again.
    constant C_HMAP_1581_MEM_W  : std_logic_vector(31 downto 0) :=
-                                 X"0000" & C_HMAP_1581_MEM(9 downto 0) & "000000";
+                                 X"00" & "00" & C_HMAP_1581_MEM(9 downto 0) & X"000";
    constant C_C1581_IMG_BASE   : std_logic_vector(25 downto 0) :=
-                                 C_HMAP_1581_IMG(9 downto 0) & X"0000";
+                                 "000" & C_HMAP_1581_IMG(9 downto 0) & X"000" & "0";
 
    signal c1581_mounted        : std_logic;
    signal c1581_act_led        : std_logic;
