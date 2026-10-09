@@ -366,7 +366,7 @@ constant OPTM_S_SAVING     : string := "<Saving>";          -- the internal writ
 --             Do use a lower case \n. If you forget one of them or if you use upper case, you will run into undefined behavior.
 --          2. Start each line that contains an actual menu item (multi- or single-select) with a Space character,
 --             otherwise you will experience visual glitches.
-constant OPTM_SIZE         : natural := 98;  -- amount of items including empty lines:
+constant OPTM_SIZE         : natural := 99;  -- amount of items including empty lines:
                                              -- needs to be equal to the number of lines in OPTM_ITEMS and amount of items in OPTM_GROUPS
                                              -- IMPORTANT: If SAVE_SETTINGS is true and OPTM_SIZE changes: Make sure to re-generate and
                                              -- and re-distribute the config file. You can make a new one using M2M/tools/make_config.sh
@@ -386,6 +386,7 @@ constant OPTM_ITEMS        : string :=
    " C64 for MEGA65\n"          &
    "\n"                         &
    " 8:%s\n"                    &  -- %s will be replaced by OPTM_S_MOUNT when not mounted and by the filename when mounted
+   " D81:%s\n"                  &  -- 1581 disk image; loaded whole into HyperRAM, see CORE/vhdl/1581/README.md
    " PRG:%s\n"                  &
    "\n"                         &
    " Expansion Port\n"          &
@@ -511,10 +512,12 @@ constant OPTM_G_HDMI_ZOOM     : integer := 17;
 constant OPTM_G_VGA_MODES     : integer := 18;
 constant OPTM_G_OSM_MODE      : integer := 19;
 constant OPTM_G_ABOUT_HELP    : integer := 20;
+constant OPTM_G_LOAD_D81      : integer := 21;   -- used in CORE/m2m-rom/m2m-rom.asm: change there, too
 
 constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_HEADLINE,
                                              OPTM_G_LINE,
                                              OPTM_G_MOUNT_8       + OPTM_G_MOUNT_DRV   + OPTM_G_START,
+                                             OPTM_G_LOAD_D81      + OPTM_G_LOAD_ROM,
                                              OPTM_G_LOAD_PRG      + OPTM_G_LOAD_ROM,
                                              OPTM_G_LINE,
                                              OPTM_G_HEADLINE,

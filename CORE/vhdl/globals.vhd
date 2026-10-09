@@ -148,9 +148,12 @@ constant C_CRTROMTYPE_OPTIONAL   : std_logic_vector(15 downto 0) := x"0004";
 --       else it is a 4k window in HyperRAM or in SDRAM
 -- In case we are loading to a QNICE device, then the control and status register is located at the 4k window 0xFFFF.
 -- @TODO: See @TODO for more details about the control and status register
-constant C_CRTROMS_MAN_NUM       : natural := 2;                                       -- Amount of manually loadable ROMs and carts, maximum is 16
-constant C_CRTROMS_MAN           : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_DEV_C64_PRG,
-                                                         C_CRTROMTYPE_DEVICE, C_DEV_C64_CRT,
+constant C_CRTROMS_MAN_NUM       : natural := 3;                                       -- Amount of manually loadable ROMs and carts, maximum is 16
+constant C_CRTROMS_MAN           : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE,   C_DEV_C64_PRG,
+                                                         C_CRTROMTYPE_DEVICE,   C_DEV_C64_CRT,
+                                                         -- The C1581 reads its disk image straight out of HyperRAM, because
+                                                         -- the drive DMAs its own sectors instead of being handed blocks.
+                                                         C_CRTROMTYPE_HYPERRAM, C_HMAP_1581_IMG,
                                                          x"EEEE");                     -- Always finish the array using x"EEEE"
 
 -- Automatically loaded ROMs: These ROMs are loaded before the core starts
@@ -174,14 +177,18 @@ constant C_CRTROMS_MAN           : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_
 -- C64 core specific ROMs
 constant JIFFY_DOS_C64           : string  := "/c64/jd-c64.bin" & ENDSTR;
 constant JIFFY_DOS_C1541         : string  := "/c64/jd-c1541.bin" & ENDSTR;
+constant C1581_DOS               : string  := "/c64/1581.rom" & ENDSTR;
 constant JIFFY_DOS_C64_START     : std_logic_vector(15 downto 0) := x"0000";
 constant JIFFY_DOS_C1541_START   : std_logic_vector(15 downto 0) := std_logic_vector(to_unsigned(JIFFY_DOS_C64'length, 16));
+constant C1581_DOS_START         : std_logic_vector(15 downto 0) := std_logic_vector(to_unsigned(JIFFY_DOS_C64'length + JIFFY_DOS_C1541'length, 16));
 
 -- M2M framework constants
-constant C_CRTROMS_AUTO_NUM      : natural := 2;                                       -- Amount of automatically loadable ROMs and carts, maximum is 16
-constant C_CRTROMS_AUTO_NAMES    : string  := JIFFY_DOS_C64 & JIFFY_DOS_C1541;     
-constant C_CRTROMS_AUTO          : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_DEV_C64_KERNAL_C64,   C_CRTROMTYPE_OPTIONAL, JIFFY_DOS_C64_START,
-                                                         C_CRTROMTYPE_DEVICE, C_DEV_C64_KERNAL_C1541, C_CRTROMTYPE_OPTIONAL, JIFFY_DOS_C1541_START,
+constant C_CRTROMS_AUTO_NUM      : natural := 3;                                       -- Amount of automatically loadable ROMs and carts, maximum is 16
+constant C_CRTROMS_AUTO_NAMES    : string  := JIFFY_DOS_C64 & JIFFY_DOS_C1541 & C1581_DOS;
+constant C_CRTROMS_AUTO          : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE,   C_DEV_C64_KERNAL_C64,   C_CRTROMTYPE_OPTIONAL, JIFFY_DOS_C64_START,
+                                                         C_CRTROMTYPE_DEVICE,   C_DEV_C64_KERNAL_C1541, C_CRTROMTYPE_OPTIONAL, JIFFY_DOS_C1541_START,
+                                                         -- The C1581's own DOS ROM, fetched by the drive out of HyperRAM
+                                                         C_CRTROMTYPE_HYPERRAM, C_HMAP_1581_MEM,        C_CRTROMTYPE_OPTIONAL, C1581_DOS_START,
                                                          x"EEEE");                     -- Always finish the array using x"EEEE"
 
 ----------------------------------------------------------------------------------------------------------

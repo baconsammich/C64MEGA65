@@ -5,10 +5,14 @@
 # This gets its own script rather than joining analyze_all.sh because the
 # sources need different GHDL settings from the rest of the tree:
 #
-#   --std=93     one simulation-only package uses "default" as an identifier,
-#                which VHDL-2008 made a reserved word
 #   -fsynopsys   cpu6502.vhd uses the non-standard std_logic_unsigned package
 #   -frelaxed    assorted VHDL-93-era relaxations
+#
+# The sources are VHDL-93 in style but build as VHDL-2008, which keeps them in
+# the same language standard as the rest of the core. That matters because
+# main.vhd instantiates the drive from c1581_lib, and a GHDL library is tied to
+# the standard it was built with - a --std=93 library is simply invisible to a
+# --std=08 elaboration.
 #
 # Being all VHDL, this drive can be analysed, elaborated and simulated here -
 # unlike the MiSTer C1581, whose FDC is Verilog and so cannot be reached by
@@ -29,7 +33,7 @@ command -v ghdl >/dev/null || { echo "ERROR: ghdl not found in PATH."; exit 1; }
 
 # The subsystem gets its own library: Gideon's 6502 and QNICE both
 # define an entity called "alu", which collide in a single library.
-GHDL_OPTS="--std=93 -fsynopsys -frelaxed --work=c1581_lib"
+GHDL_OPTS="--std=08 -fsynopsys -frelaxed --work=c1581_lib"
 
 # Analysis order matters: packages first, then leaves, then the top. GHDL has
 # no automatic ordering for a plain -a sequence.

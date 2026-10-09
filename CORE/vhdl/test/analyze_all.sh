@@ -85,6 +85,26 @@ EOF
 ##############################################################################
 # Build the xpm support library
 ##############################################################################
+##############################################################################
+# The C1581 subsystem must exist first, because main.vhd instantiates it from
+# its own library. Its sources need different GHDL settings (see
+# analyze_1581.sh), so they are built here into c1581_lib within the same
+# workdir rather than joining the design library. Same --std as the rest, or
+# the library would be invisible to the elaboration below.
+##############################################################################
+echo "== building c1581_lib =="
+c1581_ok=0
+while read -r f; do
+    [ -z "$f" ] && continue
+    if ghdl -a --workdir="$WORKDIR" --work=c1581_lib --std=08 -fsynopsys -frelaxed \
+            "../1581/$f" 2>"$WORKDIR/e"; then
+        c1581_ok=$((c1581_ok + 1))
+    else
+        echo "FAIL (c1581_lib): $f"; grep -m3 "error:" "$WORKDIR/e"; exit 1
+    fi
+done < <(sed -n '/^FILES="/,/^"$/p' ./analyze_1581.sh | sed '1d;$d')
+echo "   $c1581_ok files in c1581_lib"
+
 echo "== analysing xpm models =="
 xpm_count=0
 while read -r f; do

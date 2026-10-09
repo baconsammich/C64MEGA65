@@ -620,6 +620,7 @@ begin
          audio_right_o          => main_audio_right_o,
 
          -- C64 drive led
+         qnice_gp_reg_i         => main_qnice_gp_reg_i,
          drive_led_o            => main_drive_led_o,
          drive_led_col_o        => main_drive_led_col_o,
 

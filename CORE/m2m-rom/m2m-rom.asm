@@ -112,8 +112,14 @@ _FFILES_1       CMP     CTX_LOAD_ROM, R10
                 MOVE    C64_PRGFILE, R9
                 RBRA    _FFILES_3, 1
 
+                ; menu item "D81:<Load>" (1581 disk image)
+_FFILES_2       CMP     C64_OPTM_G_LOAD_D81, R11
+                RBRA    _FFILES_2B, !Z
+                MOVE    C64_IMGFILE_D81, R9
+                RBRA    _FFILES_3, 1
+
                 ; menu item "CRT:<Load>"
-_FFILES_2       CMP     C64_OPTM_G_MOUNT_CRT, R11
+_FFILES_2B      CMP     C64_OPTM_G_MOUNT_CRT, R11
                 RBRA    _FFILES_RET_0, !Z
                 MOVE    C64_CRTFILE, R9
 
@@ -287,8 +293,34 @@ PREP_START_R    XOR     R8, R8
 ;   R9: 0=OK, else error code
 OSM_SEL_POST    INCRB
 
+                ; Tell the core when a *.d81 has been loaded into HyperRAM.
+                ;
+                ; The C1581 (CORE/vhdl/1581) reads its disk image straight out
+                ; of HyperRAM, so unlike the 1541 it is not driven by the
+                ; virtual drive system and has no "mounted" signal of its own.
+                ; The load itself is done by the framework because the menu item
+                ; carries OPTM_G_LOAD_ROM; all that is left is to publish the
+                ; result, which goes through the 256-bit general purpose
+                ; register that the core sees as qnice_gp_reg.
+                ;
+                ; CRTROM_MAN_LDF is the array of "has been loaded" flags for
+                ; manually loadable ROMs, in the order they appear in
+                ; C_CRTROMS_MAN in globals.vhd: 0 = PRG, 1 = CRT, 2 = D81.
+                CMP     C64_OPTM_G_LOAD_D81, R8
+                RBRA    _OSM_SEL_POST_1, !Z
+                MOVE    CRTROM_MAN_LDF, R0
+                ADD     C64_CRTROM_MAN_D81, R0
+                MOVE    @R0, R1                 ; R1: 1 = image is loaded
+                MOVE    M2M$CFD_ADDR, R0
+                MOVE    0, @R0                  ; window 0 = gp_reg bits 15..0
+                MOVE    M2M$CFD_DATA, R0
+                MOVE    @R0, R2
+                AND     0xFFFE, R2              ; clear bit 0
+                OR      R1, R2                  ; bit 0 = d81 mounted
+                MOVE    R2, @R0
+
                 ; auto-reset if the user changes the kernal mode
-                CMP     C64_OPTM_G_KERNAL_MODES, R8
+_OSM_SEL_POST_1 CMP     C64_OPTM_G_KERNAL_MODES, R8
                 RBRA    _OSM_SEL_POST_R, !Z
                 MOVE    M2M$CSR, R0             ; control and status register
                 OR      M2M$CSR_RESET, @R0      ; reset the core
@@ -397,6 +429,10 @@ C64_PRGFILE     .ASCII_W ".PRG"
 C64_IMGTYPE_D64 .EQU    0x0000  ; 1541 emulated GCR: D64
 C64_IMGTYPE_G64 .EQU    0x0001  ; 1541 real GCR mode: G64, D64
 C64_IMGTYPE_D81 .EQU    0x0002  ; 1581: D81
+
+; Index of the *.d81 entry within C_CRTROMS_MAN in globals.vhd
+; (0 = PRG, 1 = CRT, 2 = D81)
+C64_CRTROM_MAN_D81 .EQU 0x0002
 
 ; We currently only support D64 images with 35 tracks (filesize 174,848 bytes)
 ; or 40 tracks (filesize 196,608 bytes).

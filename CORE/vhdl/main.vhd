@@ -115,6 +115,11 @@ entity main is
       audio_left_o           : out signed(15 downto 0);
       audio_right_o          : out signed(15 downto 0);
 
+      -- QNICE general purpose register, already in this clock domain.
+      -- Bit 0 says a *.d81 has been loaded into HyperRAM for the C1581;
+      -- see OSM_SEL_POST in CORE/m2m-rom/m2m-rom.asm.
+      qnice_gp_reg_i         : in  std_logic_vector(255 downto 0);
+
       -- C64 drive led (color is RGB)
       drive_led_o            : out std_logic;
       drive_led_col_o        : out std_logic_vector(23 downto 0);
@@ -1561,7 +1566,7 @@ begin
    ---------------------------------------------------------------------------
    -- C1581 (*.d81). Mounted when the Shell reports a disk image of type 2.
    ---------------------------------------------------------------------------
-   c1581_mounted <= vdrives_mounted(0) when iec_img_type = "10" else '0';
+   c1581_mounted <= qnice_gp_reg_i(0);
 
    i_c1581_wrapper : entity c1581_lib.c1581_wrapper
       generic map (

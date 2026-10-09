@@ -5,7 +5,9 @@
 --   Licensed under the GNU General Public License v3 (see LICENSE at the root
 --   of this repository; GPL v3 is also C64MEGA65's licence).
 --
--- Imported unmodified unless noted below. These sources implement a C1581 with
+-- Imported unmodified except as noted: the formal parameter 'default' of
+-- function resize() is renamed to 'dflt', because VHDL-2008 made 'default' a
+-- reserved word and this core is built as VHDL-2008. Behaviour is unchanged. These sources implement a C1581 with
 -- a WD177x floppy controller entirely in VHDL and in a single clock domain,
 -- taking its disk image over a memory bus rather than a two-clock SD handshake.
 -- See doc/cmd_devices.md for why that matters on the MEGA65.
@@ -154,7 +156,7 @@ package tl_string_util_pkg is
     ---------------------------------------------------------------------------
 	function is_hchr(c : character) return boolean;
 
-    function resize(s: string; size: natural; default: character := ' ') return string;
+    function resize(s: string; size: natural; dflt: character := ' ') return string;
 
     ---------------------------------------------------------------------------
     -- Compare function for strings that correctly handles terminators (NUL)
@@ -870,8 +872,8 @@ package body tl_string_util_pkg is
         return std_logic_vector(to_unsigned(character'pos(my_char), 8));
     end;
 
-    function resize(s: string; size: natural; default: character := ' ') return string is
-        variable result: string(1 to size) := (others => default);
+    function resize(s: string; size: natural; dflt: character := ' ') return string is
+        variable result: string(1 to size) := (others => dflt);
     begin
         if s'length > size then
             result := s(result'range);
