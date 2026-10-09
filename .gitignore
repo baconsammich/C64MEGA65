@@ -22,3 +22,7 @@ M2M/rom/*.lis
 M2M/rom/*.out
 M2M/rom/*.rom
 M2M/video_filters/*.out
+CORE/vhdl/test/*.cf
+CORE/vhdl/test/*.ghw
+CORE/vhdl/test/output.txt
+CORE/C64_MiSTerMEGA65/rtl/roms/*.mif.bin

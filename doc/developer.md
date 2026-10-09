@@ -89,6 +89,94 @@ The size of the configuration file needs to be equal to the constant
 `OPTM_SIZE` in `CORE/vhdl/config.vhd`. The `auto` parameter extracts this
 information automatically. The script is located in `M2M/tools`.
 
+Running the VHDL testbenches
+----------------------------
+
+`CORE/vhdl/test` contains GHDL/Questa testbenches for the simulated-cartridge
+and REU logic. They need two checkouts that live *outside* this repository,
+plus a C64 ROM in raw binary form.
+
+### Prerequisites
+
+```bash
+# 1. The 65C02 CPU model used by core_sim.vhd
+git clone https://github.com/MJoergen/65c02.git ~/65c02
+cd ~/65c02 && git checkout caec0fc
+```
+
+Pin the 65c02 checkout: on later revisions `cpu_65c02` gained a mandatory
+`G_SIM` generic and an `ioport_in_i` input that `core_sim.vhd` does not
+connect, and `src/control/microcode.vhd` was split into `microcode_6502.vhd`
+and `microcode_65c02.vhd`. Revision `caec0fc` is the last one whose port list
+matches `core_sim.vhd`.
+
+```bash
+# 2. Xilinx XPM simulation models
+git clone https://github.com/fransschreuder/xpm_vhdl.git ~/xpm_vhdl
+
+# 3. The C64 ROM as a raw binary (derived from the committed *.mif.hex,
+#    so no Quartus installation is required)
+cd CORE/vhdl/test && ./make_rom_bin.sh
+```
+
+Both checkout locations can be overridden on the command line:
+`C65C02_DIR` and `XPM_TOP_DIR`. The defaults are `../../../../65c02`
+(i.e. a sibling of this repository) and `$(HOME)/xpm_vhdl`.
+
+### Running
+
+```bash
+cd CORE/vhdl/test
+make sim                                   # DUT=sw_cartridge_wrapper (default)
+make sim DUT=crt_parser
+make sim CRT_DIR=/path/to/crts CRT_FILE=my_cartridge.crt
+make show                                  # view the waveform in gtkwave
+```
+
+`sw_cartridge_wrapper` needs a `*.crt` file to chew on; point `CRT_DIR` and
+`CRT_FILE` at one. A successful run reports `Finished parsing CRT file` and
+then shows the CPU fetching from the KERNAL reset vector at `$FCE2`.
+
+### Which testbenches work under GHDL
+
+GHDL cannot compile Verilog, so any testbench whose device-under-test is
+Verilog will elaborate but leave that instance *unbound* - it runs, but tests
+nothing. `tb_reu` is in this category (the REU is `reu.v`), as is anything
+pulling in `csync.sv`; use the `questa` target for those. `tb_sw_cartridge_wrapper`
+and `tb_crt_parser` are pure VHDL and run correctly under GHDL.
+
+For the same reason, a handful of files cannot be analysed by GHDL at all,
+because they instantiate Xilinx or Altera primitives (`library unisim` /
+`altera_mf`): `CORE/vhdl/clk.vhd`, `M2M/vhdl/clk_m2m.vhd`,
+`M2M/vhdl/controllers/M65/{audio.vhd,max10.vhdl}`,
+`M2M/vhdl/controllers/HDMI/{serialiser_10to1_selectio.vhd,video_out_clock.vhd}`
+and `M2M/vhdl/controllers/hyperram/hyperram_{rx,tx}.vhd`. This only affects
+simulation; Vivado synthesises them normally.
+
+### Known GHDL strictness findings (not bugs in hardware)
+
+GHDL enforces a few parts of the VHDL LRM more strictly than Vivado does. The
+following are rejected by GHDL but synthesise and run correctly, so they have
+deliberately been left alone - be aware of them if you try to simulate these
+units:
+
+* `M2M/vhdl/vdrives.vhd` - the `xpm_cdc_array_single` port maps slice their
+  formals with expressions derived from the `VDNUM` generic, e.g.
+  `src_in((VDNUM * 2) - 1 downto (VDNUM * 1))`. A formal part must be
+  *locally* static, and a generic is only *globally* static, so GHDL reports
+  "range expression must be locally static". Fixing it means concatenating
+  into an intermediate signal and connecting the whole vector instead.
+
+* `M2M/vhdl/av_pipeline/digital_pipeline.vhd` and `av_pipeline.vhd` - signals
+  declared `integer` are connected to `ascal` ports declared
+  `natural range 0 to 4095` (and to `natural range 0 to 8`), which GHDL
+  rejects as "bounds or direction of actual don't match". Declaring the
+  signals with the same constrained subtype as the ports would fix it.
+
+* Analysing `CORE/vhdl/main.vhd` needs `ghdl -fsynopsys`, because the MiSTer
+  sources it pulls in (`fpga64_sid_iec.vhd`, `video_sync.vhd`) use the
+  non-standard `std_logic_unsigned` package.
+
 Debug mode
 ----------
 

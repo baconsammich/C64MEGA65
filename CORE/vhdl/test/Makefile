@@ -1,6 +1,7 @@
 SRC += ../crt_parser.vhd
 SRC += ../crt_cacher.vhd
 SRC += ../crt_loader.vhd
+SRC += ../../../M2M/vhdl/qnice_csr.vhd
 SRC += ../sw_cartridge_csr.vhd
 SRC += ../sw_cartridge_wrapper.vhd
 SRC += ../cartridge.vhd
@@ -14,29 +15,33 @@ SRC += ../../../M2M/vhdl/cdc_stable.vhd
 SRC += ../../../M2M/vhdl/qnice2hyperram.vhd
 SRC += ../../../M2M/vhdl/tdp_ram.vhd
 
-SRC += ../../../../65c02/src/datapath/alu.vhd
-SRC += ../../../../65c02/src/datapath/ar.vhd
-SRC += ../../../../65c02/src/datapath/datapath.vhd
-SRC += ../../../../65c02/src/datapath/hi.vhd
-SRC += ../../../../65c02/src/datapath/lo.vhd
-SRC += ../../../../65c02/src/datapath/mr.vhd
-SRC += ../../../../65c02/src/datapath/pc.vhd
-SRC += ../../../../65c02/src/datapath/sp.vhd
-SRC += ../../../../65c02/src/datapath/sr.vhd
-SRC += ../../../../65c02/src/datapath/xr.vhd
-SRC += ../../../../65c02/src/datapath/yr.vhd
-SRC += ../../../../65c02/src/datapath/zp.vhd
-SRC += ../../../../65c02/src/control/control.vhd
-SRC += ../../../../65c02/src/control/microcode.vhd
-SRC += ../../../../65c02/src/cpu_65c02.vhd
+# External dependency: https://github.com/MJoergen/65c02
+# Must be a revision whose cpu_65c02 matches core_sim.vhd (e.g. caec0fc).
+C65C02_DIR ?= ../../../../65c02
+
+SRC += $(C65C02_DIR)/src/datapath/alu.vhd
+SRC += $(C65C02_DIR)/src/datapath/ar.vhd
+SRC += $(C65C02_DIR)/src/datapath/datapath.vhd
+SRC += $(C65C02_DIR)/src/datapath/hi.vhd
+SRC += $(C65C02_DIR)/src/datapath/lo.vhd
+SRC += $(C65C02_DIR)/src/datapath/mr.vhd
+SRC += $(C65C02_DIR)/src/datapath/pc.vhd
+SRC += $(C65C02_DIR)/src/datapath/sp.vhd
+SRC += $(C65C02_DIR)/src/datapath/sr.vhd
+SRC += $(C65C02_DIR)/src/datapath/xr.vhd
+SRC += $(C65C02_DIR)/src/datapath/yr.vhd
+SRC += $(C65C02_DIR)/src/datapath/zp.vhd
+SRC += $(C65C02_DIR)/src/control/control.vhd
+SRC += $(C65C02_DIR)/src/control/microcode.vhd
+SRC += $(C65C02_DIR)/src/cpu_65c02.vhd
 
 SRC += qnice_sim.vhd
 SRC += core_sim.vhd
 
 #CRT_FILE = Super_Mario_Bros_64_v1.2_-_Zeropaige.crt
 #CRT_FILE = Final_Cartridge_III,_The_\(USA,_Europe\)_\(May_88\)_\(Program\).crt
-CRT_FILE = ar4.crt
-CRT_DIR  = $(HOME)/Downloads
+CRT_FILE ?= ar4.crt
+CRT_DIR  ?= $(HOME)/Downloads
 
 
 #DUT ?= crt_parser
@@ -49,7 +54,8 @@ SRC += $(TB).vhd
 WAVE = $(TB).ghw
 SAVE = $(TB).gtkw
 
-XPM_TOP_DIR = ../../../../../fransschreuder/xpm_vhdl
+# External dependency: https://github.com/fransschreuder/xpm_vhdl
+XPM_TOP_DIR ?= $(HOME)/xpm_vhdl
 
 sim: $(SRC) xpm-obj08.cf
 	ghdl -i --std=08 --work=work $(SRC)

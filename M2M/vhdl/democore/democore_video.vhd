@@ -55,6 +55,7 @@ architecture synthesis of democore_video is
 
    constant bitmaps : bitmap_vector_t := (
       -- Space
+      std_logic_vector'(
       "00000000" &
       "00000000" &
       "00000000" &
@@ -62,9 +63,10 @@ architecture synthesis of democore_video is
       "00000000" &
       "00000000" &
       "00000000" &
-      "00000000",
+      "00000000"),
 
       -- Heart
+      std_logic_vector'(
       "01101100" &
       "11101110" &
       "11111110" &
@@ -72,9 +74,10 @@ architecture synthesis of democore_video is
       "00111000" &
       "00111000" &
       "00010000" &
-      "00000000",
+      "00000000"),
 
       -- Digit 0
+      std_logic_vector'(
       "01111100" &
       "11000110" &
       "11001110" &
@@ -82,9 +85,10 @@ architecture synthesis of democore_video is
       "11110110" &
       "11100110" &
       "01111100" &
-      "00000000",
+      "00000000"),
 
       -- Digit 1
+      std_logic_vector'(
       "00110000" &
       "01110000" &
       "00110000" &
@@ -92,7 +96,7 @@ architecture synthesis of democore_video is
       "00110000" &
       "00110000" &
       "11111100" &
-      "00000000");
+      "00000000"));
 
    signal offset         : integer range 0 to 63;  -- Checkerboard horizontal offset
 

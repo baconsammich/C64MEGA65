@@ -201,6 +201,9 @@ begin
             when '1' =>
                qnice_data_o <= qnice_csr_data;
 
+            when others =>
+               null;
+
          end case;
 
       end if;
