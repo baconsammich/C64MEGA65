@@ -475,9 +475,17 @@ END_OF_ROM      .DW 0
 ; The On-Screen-Menu uses the heap for several data structures. This heap
 ; is located before the main system heap in memory.
 ; You need to deduct MENU_HEAP_SIZE from the actual heap size below.
-; Example: If your HEAP_SIZE would be 30208, then you write 30208-1664=28544
+; Example: If your HEAP_SIZE would be 30208, then you write 30208-1728=28480
 ; instead, but when doing the sanity check calculations, you use 30208
-MENU_HEAP_SIZE  .EQU 1664
+;
+; This has to grow when menu items or C_CRTROMS_MAN entries are added. The
+; options menu carves OPTM_HEAP out of what is left of MENU_HEAP_SIZE after
+; the menu structure, and needs OPTM_DX words per "%s" filename slot - one per
+; virtual drive, per submenu and per manually loadable ROM, plus one scratch
+; slot. Adding the *.d81 entry (C_CRTROMS_MAN_NUM 2 -> 3) and its menu line
+; overran the old 1664 by 22 words, which showed up as
+; "Heap corruption: Hint: OPTM_HEAP_SIZE" on opening the menu.
+MENU_HEAP_SIZE  .EQU 1728
 
 #ifndef RELEASE
 
@@ -485,14 +493,14 @@ MENU_HEAP_SIZE  .EQU 1664
 ; this needs to be the last variable before the monitor variables as it is
 ; only defined as "BLOCK 1" to avoid a large amount of null-values in
 ; the ROM file
-HEAP_SIZE       .EQU 5504                       ; 7168 - 1664 = 5504
+HEAP_SIZE       .EQU 5440                       ; 7168 - 1728 = 5440
 HEAP            .BLOCK 1
 
 ; in RELEASE mode: 28k of heap which leads to a better user experience when
 ; it comes to folders with a lot of files
 #else
 
-HEAP_SIZE       .EQU 28544                      ; 30208 - 1664 = 28544
+HEAP_SIZE       .EQU 28480                      ; 30208 - 1728 = 28480
 HEAP            .BLOCK 1
  
 ; The monitor variables use 22 words, round to 32 for being safe and subtract
