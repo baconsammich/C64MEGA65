@@ -89,6 +89,18 @@ The size of the configuration file needs to be equal to the constant
 `OPTM_SIZE` in `CORE/vhdl/config.vhd`. The `auto` parameter extracts this
 information automatically. The script is located in `M2M/tools`.
 
+CMD device support
+------------------
+
+Design notes for emulating the Creative Micro Designs peripherals - CMD FD,
+RAMLink, CMD HD and the SuperCPU - are in
+[cmd_devices.md](cmd_devices.md). Nothing is implemented yet; the document
+records what the core already provides, a staged plan, and the open questions.
+
+Note that those devices need copyrighted CMD ROM images, which must never be
+committed. They are loaded from the SD card at runtime through the same
+`C_CRTROMS_AUTO` mechanism that JiffyDOS uses.
+
 Running the VHDL testbenches
 ----------------------------
 
