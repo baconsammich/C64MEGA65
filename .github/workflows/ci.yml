@@ -21,11 +21,24 @@ jobs:
         with:
           submodules: recursive
 
+      # Pinned to an upstream build rather than Ubuntu's package: GHDL 4.1.0 as
+      # shipped by Ubuntu crashes inside its own GHW waveform writer on
+      # tb_sw_cartridge_wrapper ("raised CONSTRAINT_ERROR : grt-avhpi.adb:593").
+      # The mcode backend needs no gcc or llvm, only libgnat at runtime.
       - name: Install GHDL
+        env:
+          GHDL_VERSION: 6.0.0
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ghdl
-          ghdl --version
+          sudo apt-get install -y --no-install-recommends libgnat-13
+          curl -fsSL -o /tmp/ghdl.tar.gz \
+            "https://github.com/ghdl/ghdl/releases/download/v$GHDL_VERSION/ghdl-mcode-$GHDL_VERSION-ubuntu24.04-x86_64.tar.gz"
+          mkdir -p "$HOME/ghdl"
+          tar xzf /tmp/ghdl.tar.gz -C "$HOME/ghdl" --strip-components=1
+          # Add the real bin directory, not a symlink: GHDL derives the location
+          # of its std/ieee libraries from the path of the running binary.
+          echo "$HOME/ghdl/bin" >> "$GITHUB_PATH"
+          "$HOME/ghdl/bin/ghdl" --version
 
       - name: Check out external simulation dependencies
         env:

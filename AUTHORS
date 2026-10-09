@@ -40,10 +40,10 @@ Thanks to Carsten Elton Sørensen (csoren) for adding simulated cartridge
 support (.crt) for COMAL 80, Simons BASIC, Waterloo Structured BASIC,
 Mikro Assembler and BMP-Data Turbo 2000.
 
-Thanks to baconsammich (github.com/baconsammich) for the continuous
-integration setup and the GHDL analysis gate, for the synthetic cartridge
-fixtures that let the testbenches run without a copyrighted cartridge dump,
-and for the resulting VHDL and testbench fixes.
+Thanks to Patrick Bass (baconsammich, github.com/baconsammich) for the
+continuous integration setup and the GHDL analysis gate, for the synthetic
+cartridge fixtures that let the testbenches run without a copyrighted
+cartridge dump, and for the resulting VHDL and testbench fixes.
 
 C64MEGA65:
 ----------
