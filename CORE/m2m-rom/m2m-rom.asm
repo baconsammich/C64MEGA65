@@ -368,9 +368,28 @@ _OSM_SEL_POST_R XOR     R8, R8
 ; menu item has been handled by the framework.
 OSM_SEL_PRE     INCRB
 
+                ; Put the C1581 back into reset before a *.d81 is loaded.
+                ;
+                ; This runs before the framework does the loading, which
+                ; matters for the second and every later mount: by then the
+                ; drive is running, and the Shell is about to overwrite the
+                ; disk image in HyperRAM underneath its 6502 and its WD177x
+                ; DMA. Leaving it running means the DOS executes against an
+                ; image that is changing under it while both masters fight for
+                ; HyperRAM, and the machine locks up. OSM_SEL_POST switches it
+                ; back on once the new image is complete.
+                CMP     C64_OPTM_G_LOAD_D81, R8
+                RBRA    _OSM_SEL_PRE_1, !Z
+                MOVE    M2M$CFD_ADDR, R0
+                MOVE    0, @R0                  ; window 0 = gp_reg bits 15..0
+                MOVE    M2M$CFD_DATA, R0
+                MOVE    @R0, R1
+                AND     0xFFFE, R1              ; clear bit 0: no disk
+                MOVE    R1, @R0
+
                 ; automatically switch to "Simulate cartridge" if the user
                 ; chooses to load a software cartridge
-                CMP     C64_OPTM_G_MOUNT_CRT, R8
+_OSM_SEL_PRE_1  CMP     C64_OPTM_G_MOUNT_CRT, R8
                 RBRA    _OSM_SEL_PRE_R, !Z
                 MOVE    C64_OSM_EXP_PORT_CRT, R8
                 RSUB    M2M$GET_SETTING, 1

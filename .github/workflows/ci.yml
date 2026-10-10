@@ -131,6 +131,15 @@ jobs:
         working-directory: CORE/vhdl/test
         run: ./run_tb_c1581.sh
 
+      # IEC CLK and DATA are open-collector: one shared wire each, modelled as
+      # an AND, so every device has to be fed what all the others drive. A
+      # missing term is silent - the device just cannot hear whoever it is
+      # missing. The C1581 was fed the C1541's output instead of the C64's and
+      # so answered nothing.
+      - name: Check the IEC bus wiring
+        working-directory: CORE/vhdl/test
+        run: ./check_iec_bus.py
+
       # GHDL cannot read Verilog, which leaves the ~70 Verilog and
       # SystemVerilog files of the MiSTer core unchecked. Verilator covers them.
       #

@@ -687,10 +687,20 @@ _LI_CRTROM      MOVE    CRTROM_MAN_DEV, R0
                 ADD     R1, R0
                 MOVE    @R0, R0                 ; R0: device number
                 MOVE    R0, R8
+
+                ; Only a C_CRTROMTYPE_DEVICE entry has a control and status
+                ; register. For a memory-backed one this would put a stray word
+                ; into the memory itself, at the meaningless 4k window
+                ; CRTROM_CSR_4KWIN. See HANDLE_CRTROM_M in crts-and-roms.asm.
+                MOVE    M2M$HYPERRAM, R10
+                CMP     R0, R10
+                RBRA    _LI_CRTROM_1, Z
+
                 MOVE    CRTROM_CSR_STATUS, R9   ; set CSR to "loading"
                 MOVE    CRTROM_CSR_ST_LDNG, R10
                 RSUB    CRTROM_CSR_W, 1
-                MOVE    HNDL_RM_FILES, R9
+
+_LI_CRTROM_1    MOVE    HNDL_RM_FILES, R9
 
                 ; Open file
 _LI_OPENFILE    MOVE    HANDLE_DEV, R8          ; R8: sd card device handle

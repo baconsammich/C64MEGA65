@@ -1396,11 +1396,18 @@ begin
          reset          => iec_drives_reset,
          pause          => pause_i,
 
-         -- interface to the C64 core
-         iec_clk_i      => c64_iec_clk_out and hw_iec_clk_n_in,
+         -- Interface to the C64 core.
+         --
+         -- IEC is a single wired-AND node, so each participant has to be fed
+         -- the AND of what everyone else drives. The signal names are a trap:
+         -- "c64_iec_clk_in" is what the C64 *receives*, which is what this
+         -- drive drives, and "c64_iec_clk_out" is what the C64 drives. So the
+         -- terms here are the C64, the hardware IEC port and the C1581 -
+         -- everyone except this drive itself.
+         iec_clk_i      => c64_iec_clk_out and hw_iec_clk_n_in and c1581_iec_clk_o,
          iec_clk_o      => c64_iec_clk_in,
          iec_atn_i      => c64_iec_atn_out,
-         iec_data_i     => c64_iec_data_out and hw_iec_data_n_in,
+         iec_data_i     => c64_iec_data_out and hw_iec_data_n_in and c1581_iec_data_o,
          iec_data_o     => c64_iec_data_in,
 
          -- disk image status
@@ -1643,9 +1650,16 @@ begin
          -- would put two drives on the same number and both would reply to
          -- the same ATN. Load from the 1581 with ,9 - e.g. LOAD"$",9.
          drive_addr_i        => "01",            -- device 9
+         -- Same wired-AND rule as the C1541 above: everyone except this
+         -- drive. Note "c64_iec_clk_in" is the C1541's *output* - the C64's
+         -- input - not what the C64 drives. Feeding this drive that instead of
+         -- "c64_iec_clk_out" leaves it listening to the other drive and deaf
+         -- to the computer, so it mounts an image and then never answers a
+         -- single command.
          iec_atn_i           => c64_iec_atn_out,
-         iec_clk_i           => c64_iec_clk_in and hw_iec_clk_n_in,
-         iec_data_i          => c64_iec_data_in and hw_iec_data_n_in,
+         iec_clk_i           => c64_iec_clk_out and hw_iec_clk_n_in and c64_iec_clk_in,
+         iec_data_i          => c64_iec_data_out and hw_iec_data_n_in and c64_iec_data_in,
+         -- Fast serial. Only the C128 drives SRQ; on a C64 it idles high.
          iec_srq_i           => '1',
          iec_atn_o           => c1581_iec_atn_o,
          iec_clk_o           => c1581_iec_clk_o,

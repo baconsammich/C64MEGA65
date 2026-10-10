@@ -31,10 +31,14 @@ With an image argument it also checks that the offset the formula computes for
 logical track 40 sector 0 really does land on that image's 1581 header - which
 is what ties the arithmetic to a real file rather than to another formula.
 """
+import os
 import re
 import sys
 
-SRC = '../1581/glue/c1581_disk_server.vhd'
+# Resolve relative to this script, not the caller's cwd, so the gate
+# works from anywhere - the shell gates do the same with a cd.
+SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                   '../1581/glue/c1581_disk_server.vhd')
 
 TRACKS      = 80          # physical cylinders
 SIDES       = 2
