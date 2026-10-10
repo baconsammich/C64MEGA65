@@ -113,6 +113,14 @@ jobs:
         working-directory: CORE/vhdl/test
         run: ./analyze_1581.sh
 
+      # The C1581's sector addressing is not reachable by any testbench here -
+      # its disk image lives in HyperRAM and arrives over the Shell's ROM
+      # loader - and a wrong offset still reads and still writes, it just reads
+      # the wrong sector. Check the arithmetic directly instead.
+      - name: Check the C1581 sector addressing
+        working-directory: CORE/vhdl/test
+        run: ./check_d81_geometry.py
+
       # GHDL cannot read Verilog, which leaves the ~70 Verilog and
       # SystemVerilog files of the MiSTer core unchecked. Verilator covers them.
       #
