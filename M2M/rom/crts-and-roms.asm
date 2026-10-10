@@ -132,9 +132,14 @@ _CRTRI_L8       SUB     1, R0
                 MOVE    CRTROM_MAN_DEV, R1
                 MOVE    CRTROM_CSR_STATUS, R9
                 MOVE    CRTROM_CSR_ST_IDLE, R10            
+                ; Skip memory-backed entries: they have no CSR, and writing
+                ; one puts a stray word into the memory itself.
 _CRTRI_L9       MOVE    @R1++, R8
+                MOVE    M2M$HYPERRAM, R11
+                CMP     R8, R11
+                RBRA    _CRTRI_L9A, Z
                 RSUB    CRTROM_CSR_W, 1
-                SUB     1, R0
+_CRTRI_L9A      SUB     1, R0
                 RBRA    _CRTRI_L9, !Z
 
                 ; ------------------------------------------------------------
@@ -492,8 +497,25 @@ CRTROM_MLST_GET INCRB
                 MOVE    CRTROM_MAN_DEV, R2      ; R2: dev ids man. ld CRT/ROM
                 XOR     R3, R3                  ; R3: current CRT/ROM ID
 
-_CRTROM_MLSTGT0 MOVE    M2M$RAMROM_DEV, R5      ; switch to CRT/ROM device
-                MOVE    @R2++, @R5
+_CRTROM_MLSTGT0 MOVE    @R2++, R4               ; R4: device id of this entry
+
+                ; As in HANDLE_CRTROM_M: a C_CRTROMTYPE_HYPERRAM entry has no
+                ; device and so no status register. Reading one gets whatever
+                ; happens to be in memory at CRTROM_CSR_4KWIN, which is never
+                ; CRTROM_CSR_ST_OK, so the entry would be reported as not
+                ; loaded on every poll and the remembered flag - the one
+                ; OSM_SEL_POST in the core reads, and the one that decides
+                ; whether the filename is shown - would be cleared again right
+                ; after a successful load. Take the remembered flag as the
+                ; truth for these.
+                MOVE    M2M$HYPERRAM, R5
+                CMP     R4, R5
+                RBRA    _CRTROM_MLSTGTM, !Z     ; a real device: read its CSR
+                MOVE    @R1, R6                 ; memory-backed: no change
+                RBRA    _CRTROM_MLSTGT2, 1
+
+_CRTROM_MLSTGTM MOVE    M2M$RAMROM_DEV, R5      ; switch to CRT/ROM device
+                MOVE    R4, @R5
                 MOVE    M2M$RAMROM_4KWIN, R5
                 MOVE    CRTROM_CSR_4KWIN, @R5
 
@@ -555,10 +577,40 @@ HANDLE_CRTROM_M INCRB
                 MOVE    LOG_STR_ROMPRS, R8
                 SYSCALL(puts, 1)
 
+                ; A C_CRTROMTYPE_HYPERRAM (or SDRAM) entry has no device and
+                ; no parser: the Shell has already streamed the file straight
+                ; into memory, and there is nothing to hand a file size to and
+                ; nothing to wait for. The control and status register dance
+                ; below only makes sense for C_CRTROMTYPE_DEVICE, where a
+                ; core-side device receives the byte stream.
+                ;
+                ; Doing it anyway writes the CSRs into the memory itself at the
+                ; bogus 4k window CRTROM_CSR_4KWIN, and then the parse-status
+                ; poll at _HNDLCRTROM_1 spins forever, because whatever that
+                ; read returns is never CRTROM_CSR_PT_OK or _PT_ERR. The Shell
+                ; hangs with the menu still on screen.
+                ;
+                ; Device IDs below 0x0100 are framework devices and core
+                ; devices are 0x0100 and up (see M2M/vhdl/qnice_wrapper.vhd),
+                ; so M2M$HYPERRAM is an unambiguous marker for these entries -
+                ; it is what CRTROM_INIT stored for them.
+                MOVE    M2M$HYPERRAM, R8
+                CMP     R0, R8
+                RBRA    _HNDLCRTROM_CSR, !Z     ; a real device: carry on
+
+                MOVE    CRTROM_MAN_LDF, R8      ; set "loaded" flag so that..
+                ADD     R1, R8                  ; ..the filename is shown
+                MOVE    1, @R8
+                MOVE    LOG_STR_ROMPRSO, R8     ; log OK to serial terminal
+                SYSCALL(puts, 1)
+                XOR     R8, R8                  ; no error
+                XOR     R9, R9
+                RBRA    _HNDLCRTROM_R, 1
+
                 ; start the parsing of the CRT/ROM by providing the file size
                 ; of the loaded CRT/ROM via CSR registers, set CSR status to
                 ; OK and set the load flag so that the filename can be shown
-                MOVE    R0, R8                  ; R0: CRT/ROM device id
+_HNDLCRTROM_CSR MOVE    R0, R8                  ; R0: CRT/ROM device id
                 MOVE    CRTROM_CSR_FS_LO, R9    ; transmit filesize: low
                 MOVE    R2, R10
                 ADD     FAT32$FDH_SIZE_LO, R10
