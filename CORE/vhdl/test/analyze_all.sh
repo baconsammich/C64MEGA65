@@ -80,6 +80,8 @@ qnice_wrapper               instantiates QNICE
 digital_pipeline            instantiates serialiser (unisim) + integer/natural port bounds
 av_pipeline                 integer actual vs natural range port (see doc/developer.md)
 vdrives                     VDNUM-derived formals are not locally static (see doc/developer.md)
+tb_c1581_iec                needs -frelaxed: Gideon's IEC BFM uses non-protected
+                            shared variables. Run it with ./run_tb_c1581_iec.sh
 EOF
 
 ##############################################################################

@@ -1,31 +1,22 @@
 #!/usr/bin/env bash
 ##############################################################################
-# Build the vendored C1581 into c1581_lib and run tb_c1581_wrapper.
+# Talk to the C1581 over a simulated IEC bus, using Gideon's own bus-functional
+# model as the controller.
 #
-# The testbench checks the two things about the drive that cannot be checked by
-# reading the code and that nothing else here covers:
+# tb_c1581_wrapper proves the drive boots and acknowledges ATN. That is not the
+# same as working: a drive can answer ATN and still never return a byte, which
+# is what "SEARCHING FOR $" and then a hung C64 looks like. This one reads the
+# drive's error channel - no disk access, so it isolates "does not talk" from
+# "cannot read the disk" - and then loads "$" for real, which needs seek, read
+# sector and the HyperRAM DMA.
 #
-#   1. with no disk mounted it must issue NO HyperRAM requests at all, because
-#      its 6502 fetches every instruction out of HyperRAM shared with the video
-#      scaler - a drive that runs when it should not looks like the whole
-#      machine freezing;
-#   2. once mounted, its first fetch must be the 6502 reset vector at the top
-#      of its DOS ROM window, and every address must stay inside the window it
-#      was given. That is the arithmetic that decides whether the drive finds
-#      its DOS at all.
+# Needs a real 1581 DOS dump and a *.d81. Those are copyrighted and not in this
+# repository, so without them the testbench reports "skipped" and does nothing:
 #
-# Without arguments the memory is filled with $EA (6502 NOP), which is enough
-# for the addressing checks and needs no copyrighted files - that is what CI
-# runs.
+#   ROM=~/roms/1581.rom D81=~/roms/some.d81 EXPECT=DISKNAME ./run_tb_c1581_iec.sh
 #
-# With a real 1581 DOS dump it goes further: it boots the drive for real and
-# checks that it acknowledges ATN by pulling DATA low, which is the check that
-# catches the drive being wired to the wrong side of the IEC bus. Those ROMs
-# are not in this repository, so point at your own:
-#
-#   ROM=~/roms/1581.rom D81=~/roms/some.d81 RUN_MS=150 ./run_tb_c1581.sh
-#
-# Usage: ./run_tb_c1581.sh
+# BOOT_MS sets how long the DOS is given before being spoken to (default 150).
+# This is a slow simulation - minutes, not seconds.
 ##############################################################################
 set -uo pipefail
 
@@ -90,23 +81,24 @@ for f in $FILES; do
 done
 echo "   $(echo $FILES | wc -w) files OK"
 
-echo "== running tb_c1581_wrapper =="
-ghdl -a --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_wrapper.vhd \
+echo "== running tb_c1581_iec =="
+ghdl -a --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_iec.vhd \
     >"$WORKDIR/a" 2>&1 || { grep -m5 "error:" "$WORKDIR/a" | sed 's/^/   /'; exit 1; }
-ghdl -e --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_wrapper \
+ghdl -e --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_iec \
     >"$WORKDIR/e2" 2>&1 || { grep -m5 "error:" "$WORKDIR/e2" | sed 's/^/   /'; exit 1; }
 
 # An array, not a string: ROM and D81 paths routinely contain spaces.
 GENERICS=()
-[ -n "${ROM:-}" ]    && GENERICS+=("-gG_ROM_FILE=$ROM")
-[ -n "${D81:-}" ]    && GENERICS+=("-gG_D81_FILE=$D81")
-[ -n "${RUN_MS:-}" ] && GENERICS+=("-gG_RUN_MS=$RUN_MS")
+[ -n "${ROM:-}" ]     && GENERICS+=("-gG_ROM_FILE=$ROM")
+[ -n "${D81:-}" ]     && GENERICS+=("-gG_D81_FILE=$D81")
+[ -n "${EXPECT:-}" ]  && GENERICS+=("-gG_EXPECT=$EXPECT")
+[ -n "${BOOT_MS:-}" ] && GENERICS+=("-gG_BOOT_MS=$BOOT_MS")
 [ ${#GENERICS[@]} -gt 0 ] && printf '   with %s\n' "${GENERICS[@]}"
 
 # The testbench ends itself by stopping the clock; --stop-time is a backstop,
 # and has to be well clear of G_RUN_MS.
-STOP_MS=$(( ${RUN_MS:-2} + 250 ))
-ghdl -r --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_wrapper \
+STOP_MS=$(( ${BOOT_MS:-150} + 300 ))
+ghdl -r --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_iec \
     "${GENERICS[@]}" --stop-time="${STOP_MS}ms" >"$WORKDIR/run" 2>&1
 rc=$?
 
@@ -115,10 +107,10 @@ sed -nE 's/^.*\(report (note|warning|error|failure)\): /   /p' "$WORKDIR/run" \
     | grep -v "metavalue detected"
 
 echo
-if grep -q "RESULT: c1581_wrapper behaves as expected" "$WORKDIR/run"; then
+if grep -qE "RESULT: (the C1581 answers over IEC|skipped)" "$WORKDIR/run"; then
     echo "RESULT: no errors"
     exit 0
 fi
-echo "RESULT: the C1581 testbench failed"
+echo "RESULT: the C1581 IEC testbench failed"
 [ "$rc" -eq 0 ] && rc=1
 exit "$rc"

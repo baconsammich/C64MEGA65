@@ -264,16 +264,11 @@ begin
              & " clk=" & std_logic'image(iec_clk)
              & " data=" & std_logic'image(iec_data);
 
-      -- Before any protocol: does the drive acknowledge ATN at all? Every
-      -- device on the bus must pull DATA low when ATN goes active, so this
-      -- separates "the drive is not there" from "the handshake went wrong".
-      report "checking the ATN acknowledge";
-      iec_listen(bfm);
-      wait for 1 ms;
-      report "with the controller listening: clk=" & std_logic'image(iec_clk)
-             & " data=" & std_logic'image(iec_data)
-             & "  (drive drives clk=" & std_logic'image(drv_clk_o)
-             & " data=" & std_logic'image(drv_data_o) & ")";
+      -- Do NOT call iec_listen here as a probe. Its only effect is to set the
+      -- BFM to the listener state, and the BFM's dispatch loop then calls a
+      -- blocking receive_byte at the end of every iteration - so with nothing
+      -- talking it wedges there and never services another command, which
+      -- looks exactly like the drive being silent.
 
       report "reading the error channel: TALK 9, channel 15";
       iec_send_atn(bfm, X"49");          -- TALK device 9

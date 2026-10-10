@@ -40,6 +40,7 @@ GHDL_OPTS="--std=08 -fsynopsys -frelaxed --work=c1581_lib"
 FILES="
 sim/tl_string_util_pkg.vhd
 sim/file_io_pkg.vhd
+sim/iec_bus_bfm.vhd
 busses/io_bus_pkg.vhd
 busses/mem_bus_pkg.vhd
 cpu6502/pkg_6502_defs.vhd
