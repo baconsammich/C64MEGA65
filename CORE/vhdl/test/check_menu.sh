@@ -32,6 +32,14 @@
 #      so the n-th such item must match the n-th entry of C_CRTROMS_MAN. Get it
 #      wrong and every item loads its file into the next entry's buffer - the
 #      file browser still lists and still loads, so nothing fails loudly.
+#   6. The C1581 HyperRAM windows in globals.vhd are laid out consistently.
+#      Everything the drive asks for leaves through one c1581_mem_bridge, which
+#      adds the drive's window base to every request, so the DOS ROM has to sit
+#      inside the drive's own 8-window block and the *.d81 has to start above
+#      it. main.vhd range-constrains the constants it derives from these, but
+#      GHDL only reports that when elaborating main - which is on the
+#      expected-failure list here, because main instantiates SystemVerilog. So
+#      the check lives here, where it actually runs.
 #
 # Usage: ./check_menu.sh
 ##############################################################################
@@ -200,6 +208,44 @@ if m:
         die("C64_CRTROM_MAN_D81 is %d but the D81 item is loadable ROM slot %d "
             "- the core would be told the wrong mount status. Fix it in "
             "CORE/m2m-rom/m2m-rom.asm" % (asm_slot, d81_slot))
+
+# ---- C1581 HyperRAM window layout ----------------------------------------
+def hmap(name):
+    m = re.search(r'constant %s\s+: std_logic_vector\(15 downto 0\) := x"([0-9A-Fa-f]+)"' % name, glb)
+    return int(m.group(1), 16) if m else None
+
+mem, rom, img = hmap('C_HMAP_1581_MEM'), hmap('C_HMAP_1581_ROM'), hmap('C_HMAP_1581_IMG')
+
+if None not in (mem, rom, img):
+    WIN_BYTES   = 8192          # a 4k window is 4096 *words*
+    DRIVE_WINS  = 8             # the drive's own address space is 64 KB
+    D81_BYTES   = 819200        # 80 tracks x 2 sides x 10 sectors x 512
+    D81_WINS    = -(-D81_BYTES // WIN_BYTES)
+    HYPERRAM_WINS = 1024        # 8 MB
+    img_offs    = (img - mem) * WIN_BYTES
+
+    print()
+    print("== C1581 HyperRAM windows ==")
+    print("   drive RAM/ROM 0x%03X..0x%03X   DOS ROM 0x%03X   image 0x%03X..0x%03X (%d windows)"
+          % (mem, mem + DRIVE_WINS - 1, rom, img, img + D81_WINS - 1, D81_WINS))
+    print("   image offset as the drive sees it: 0x%06X" % img_offs)
+
+    if not (mem <= rom < mem + DRIVE_WINS):
+        die("C_HMAP_1581_ROM 0x%03X is outside the drive's own block "
+            "0x%03X..0x%03X - the drive fetches its DOS through the same memory "
+            "bridge, so the ROM has to be inside the window that bridge offsets "
+            "by" % (rom, mem, mem + DRIVE_WINS - 1))
+    if img < mem + DRIVE_WINS:
+        die("C_HMAP_1581_IMG 0x%03X overlaps the drive's own 64 KB "
+            "(0x%03X..0x%03X) - the image has to start above it"
+            % (img, mem, mem + DRIVE_WINS - 1))
+    elif img_offs > 0xFFFFFF:
+        die("the image sits 0x%06X above the drive window, which does not fit "
+            "the 24-bit WD177x transfer_addr register" % img_offs)
+    if img + D81_WINS > HYPERRAM_WINS:
+        die("the image needs windows 0x%03X..0x%03X but HyperRAM only has "
+            "0x000..0x%03X - the top would wrap onto the framework's frame "
+            "buffers" % (img, img + D81_WINS - 1, HYPERRAM_WINS - 1))
 
 print()
 if die.bad:

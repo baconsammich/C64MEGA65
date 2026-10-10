@@ -311,10 +311,45 @@ architecture synthesis of main is
    -- derivation mega65.vhd uses for the CRT base. The memory bridge wants that
    -- word address (like reu_mapper's G_BASE_ADDRESS); the disk server wants a
    -- byte address, which is one bit further left again.
+   -- Base of the drive's HyperRAM window as a 16-bit *word* address: a 4k
+   -- window is 4096 words, so window n starts at word n*4096 and at byte
+   -- n*8192.
    constant C_HMAP_1581_MEM_W  : std_logic_vector(31 downto 0) :=
                                  X"00" & "00" & C_HMAP_1581_MEM(9 downto 0) & X"000";
+
+   -- Where the *.d81 sits, as the drive sees it.
+   --
+   -- This is NOT the absolute HyperRAM address. Everything the drive asks for -
+   -- its own RAM and ROM from the CPU, and the sector transfers the WD177x
+   -- DMAs - leaves through the one mem_req port and so through one instance of
+   -- c1581_mem_bridge, which adds G_MEM_BASE to every request. So an address
+   -- handed to the drive has to be relative to that window, or it gets offset
+   -- twice: the absolute 0x738000 would come out at word 0x39C000 + 0x394000,
+   -- which is past the end of the 8 MB HyperRAM entirely.
+   --
+   -- The drive's own address space is the first 64 KB (g_ram_base is 0 and the
+   -- CPU has 16 address bits), which is the 8 windows C_HMAP_1581_MEM..+7. The
+   -- image starts immediately above that.
+   -- The range on this constant is the check, not decoration. It has to be at
+   -- least 64 KB, so the image clears the drive's own RAM and ROM, and it has
+   -- to stay inside 24 bits, because that is the width of the WD177x
+   -- transfer_addr register the disk server writes it into. A bad window
+   -- layout in globals.vhd is then a range violation that GHDL reports while
+   -- analysing this file (CORE/vhdl/test/analyze_all.sh) rather than something
+   -- that quietly reads the wrong part of HyperRAM. A concurrent assert would
+   -- not do: those are only evaluated in simulation, and nothing here is
+   -- simulated.
+   constant C_C1581_IMG_OFFS   : natural range 65536 to 16#FFFFFF# :=
+      (to_integer(unsigned(C_HMAP_1581_IMG)) - to_integer(unsigned(C_HMAP_1581_MEM))) * 8192;
    constant C_C1581_IMG_BASE   : std_logic_vector(25 downto 0) :=
-                                 "000" & C_HMAP_1581_IMG(9 downto 0) & X"000" & "0";
+                                 std_logic_vector(to_unsigned(C_C1581_IMG_OFFS, 26));
+
+   -- Likewise: the DOS ROM has to sit inside the drive's own 8-window block,
+   -- because the drive fetches it through the same memory bridge. Below the
+   -- block the subtraction underflows, above it the value exceeds 7; either
+   -- way this constant will not elaborate.
+   constant C_C1581_ROM_WIN    : natural range 0 to 7 :=
+      to_integer(unsigned(C_HMAP_1581_ROM)) - to_integer(unsigned(C_HMAP_1581_MEM));
 
    signal c1581_mounted        : std_logic;
    signal c1581_act_led        : std_logic;
