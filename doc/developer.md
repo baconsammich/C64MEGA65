@@ -68,6 +68,38 @@ Conventions for version info in `*.cor` files:
   release that this alpha release works towards and y is the version of the
   alpha release, just counting upwards.
 
+### Or use `CORE/mkcore.sh`
+
+`CORE/mkcore.sh` wraps the call above so the invocation is recorded rather than
+remembered - in particular the `"=default,c64cart+c64cart"` argument, which is
+easy to leave off and whose absence shows up only as the MEGA65 no longer
+auto-starting this core when a C64 cartridge is inserted.
+
+```bash
+BIT2CORE=/path/to/bit2core ./CORE/mkcore.sh        # every built revision
+BIT2CORE=/path/to/bit2core ./CORE/mkcore.sh 6      # just R6
+```
+
+It takes the version out of `CORENAME` in `CORE/vhdl/config.vhd`, so the header
+cannot disagree with what the core prints on screen, and it reads the header
+back afterwards so a wrong name or version is visible immediately.
+
+### Then build an SD card
+
+`CORE/mksdcard.sh` stages a card layout - the `.cor`, the `/c64/c64mega65`
+configuration file sized from `OPTM_SIZE`, and whatever ROMs and disk images
+you point it at - and will optionally write a partitioned FAT32 image:
+
+```bash
+./CORE/mksdcard.sh --out ~/sdcard --assets ~/my-roms --img
+```
+
+It prefers a freshly built `.cor` over the released ones in `bin/`, and reports
+whether the card can actually run the C1581, which needs `/c64/1581.rom` and at
+least one `*.d81`. Both are read at runtime, and a card missing them produces no
+error at all - the core boots, the menu opens, and the D81 file browser is
+simply empty.
+
 Configuration file
 ------------------
 
