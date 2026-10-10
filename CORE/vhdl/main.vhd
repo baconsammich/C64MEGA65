@@ -353,6 +353,7 @@ architecture synthesis of main is
    constant C_C1581_ROM_WIN    : natural range 0 to 15 :=
       to_integer(unsigned(C_HMAP_1581_ROM)) - to_integer(unsigned(C_HMAP_1581_MEM));
 
+   signal c1581_enable         : std_logic;
    signal c1581_mounted        : std_logic;
    signal c1581_act_led        : std_logic;
    signal c1581_busy           : std_logic;
@@ -1627,7 +1628,11 @@ begin
    -- the rest of the core of HyperRAM bandwidth - which looks like a hang, not
    -- like a missing file.
    ---------------------------------------------------------------------------
-   c1581_mounted <= qnice_gp_reg_i(0) and qnice_gp_reg_i(1);
+   -- bit 1 lets the drive run; bit 0 says a disk is in it. Keeping them apart
+   -- is what stops a 1.5 s power-on self test happening on every mount - see
+   -- the comment on drive_en_i in CORE/vhdl/1581/glue/c1581_wrapper.vhd.
+   c1581_enable  <= qnice_gp_reg_i(1);
+   c1581_mounted <= qnice_gp_reg_i(0);
 
    i_c1581_wrapper : entity c1581_lib.c1581_wrapper
       generic map (
@@ -1638,6 +1643,7 @@ begin
          clk_i               => clk_main_i,
          rst_i               => not reset_core_n,
          img_base_i          => C_C1581_IMG_BASE,
+         drive_en_i          => c1581_enable,
          img_mounted_i       => c1581_mounted,
          -- The *.d81 lives in HyperRAM, loaded there by the ROM loader, and
          -- nothing writes it back to the SD card. Present it as writable so

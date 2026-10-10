@@ -45,8 +45,19 @@ entity c1581_wrapper is
       rst_i            : in  std_logic;
 
       -- Mount control, already in this clock domain
+      --
+      -- drive_en_i and img_mounted_i are deliberately separate. The 1581 does
+      -- a long power-on self test - all 256 zero-page bytes, then two 255-unit
+      -- delay loops at $C2E9 - which together leave it unresponsive for about
+      -- 1.5 s after reset. Tying reset to "a disk is mounted" means paying that
+      -- every time the user picks a different image, and loading too soon after
+      -- mounting then looks like a hung drive. So the drive is released once,
+      -- as soon as its DOS ROM is in place, and inserting or changing a disk is
+      -- just the floppy_inserted line and a disk-change flag - which is what
+      -- those signals do on real hardware anyway.
       img_base_i       : in  std_logic_vector(25 downto 0);  -- byte address of the *.d81
-      img_mounted_i    : in  std_logic;
+      drive_en_i       : in  std_logic;   -- DOS ROM is loaded: let the drive run
+      img_mounted_i    : in  std_logic;   -- a *.d81 is in the drive
       img_readonly_i   : in  std_logic;
       drive_addr_i     : in  std_logic_vector( 1 downto 0);
 
@@ -104,17 +115,16 @@ architecture synthesis of c1581_wrapper is
    signal power_led_n : std_logic;
    signal motor_led_n : std_logic;
 
-   -- Held in reset until an image is mounted. The drive's 6502 fetches
-   -- continuously once running, and every fetch is a HyperRAM access shared
-   -- with the video scaler, so there is no reason to let it run when there is
-   -- no disk. It also means a user who never touches *.d81 cannot be affected
-   -- by this at all. The cost is that the drive does not answer on the IEC bus
-   -- to report "no disk" before one is inserted.
+   -- Held in reset until the DOS ROM has been loaded. Without the ROM the
+   -- drive's 6502 would fetch its reset vector out of uninitialised HyperRAM
+   -- and run away, and every fetch is an access shared with the video scaler.
+   -- With the ROM present it is let go once and left running, so the self test
+   -- happens while the user is still in the menu rather than after every mount.
    signal drive_rst   : std_logic;
 
 begin
 
-   drive_rst <= rst_i or not img_mounted_i;
+   drive_rst <= rst_i or not drive_en_i;
 
    ------------------------------------------------------------------------------
    -- Timing ticks

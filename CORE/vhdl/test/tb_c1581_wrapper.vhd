@@ -43,7 +43,20 @@ entity tb_c1581_wrapper is
       -- Log the first N accesses that fall in the drive's zero page. The DOS
       -- reset handler tests zero page byte by byte before it does anything
       -- else, so this shows whether RAM reads back what was written.
-      G_TRACE_ZP : natural := 0
+      G_TRACE_ZP : natural := 0;
+      -- Log this many drive addresses right after ATN is asserted. Addresses
+      -- at or above 0x8000 are ROM, so this shows which code the 6502 is
+      -- actually running when the controller calls - the only way to tell an
+      -- idle loop that polls ATN from one that does not.
+      G_TRACE_ATN : natural := 0;
+      -- Cycles between a read being accepted and its data arriving. The
+      -- default of 2 is optimistic on purpose - it keeps the addressing checks
+      -- quick - but it is NOT what the hardware does. A single random access
+      -- to the real HyperRAM, through the arbiter and the clock-domain FIFO,
+      -- costs the core clock domain something closer to 16 cycles, and
+      -- c1541_timing stalls the drive's CPU through mem_busy for every one of
+      -- them. Raise this to see how much slower the drive really is.
+      G_HR_LATENCY : natural := 2
    );
 end entity tb_c1581_wrapper;
 
@@ -68,6 +81,7 @@ architecture sim of tb_c1581_wrapper is
    signal clk            : std_logic := '0';
    signal rst            : std_logic := '1';
    signal img_mounted    : std_logic := '0';
+   signal drive_en       : std_logic := '0';
    signal running        : boolean   := true;
 
    -- The IEC lines as the controller drives them: open collector, so '1' is
@@ -96,6 +110,7 @@ architecture sim of tb_c1581_wrapper is
    signal out_of_window  : natural := 0;
    signal worst_addr     : unsigned(31 downto 0) := (others => '0');
    signal n_img_access   : natural := 0;     -- reads/writes of the disk image
+   signal atn_live        : boolean := false;
    -- How much of its own 64 KB the drive actually touches. A healthy DOS ranges
    -- over its ROM; a crashed 6502 spinning on a handful of bytes does not, and
    -- the two look identical if you only count accesses.
@@ -123,6 +138,7 @@ begin
          clk_i               => clk,
          rst_i               => rst,
          img_base_i          => C_IMG_BASE,
+         drive_en_i          => drive_en,
          img_mounted_i       => img_mounted,
          img_readonly_i      => '0',
          drive_addr_i        => "01",
@@ -164,7 +180,9 @@ begin
       type t_byte_file is file of character;
 
       variable v_mem    : t_mem := (others => X"EA");
-      variable v_pipe   : std_logic_vector(1 downto 0) := "00";
+      -- one stage per cycle of latency, so the data comes back G_HR_LATENCY
+      -- cycles after the access is accepted
+      variable v_pipe   : std_logic_vector(0 to G_HR_LATENCY) := (others => '0');
       variable v_addr_q : natural := 0;
       variable v_init   : boolean := false;
       variable v_idx    : natural;
@@ -203,8 +221,8 @@ begin
             v_init := true;
          end if;
 
-         avm_rdvalid <= v_pipe(1);
-         if v_pipe(1) = '1' then
+         avm_rdvalid <= v_pipe(v_pipe'high);
+         if v_pipe(v_pipe'high) = '1' then
             avm_readdata <= X"00" & v_mem(v_addr_q);
          end if;
 
@@ -217,7 +235,8 @@ begin
                end if;
             end if;
          end if;
-         v_pipe := v_pipe(0) & avm_read;
+         v_pipe(1 to v_pipe'high) := v_pipe(0 to v_pipe'high - 1);
+         v_pipe(0) := avm_read;
       end if;
    end process p_hyperram;
 
@@ -228,7 +247,8 @@ begin
       -- one flag per 256-byte page of the drive's 64 KB address space
       variable v_seen  : std_logic_vector(0 to 255) := (others => '0');
       variable v_off   : unsigned(31 downto 0);
-      variable v_trace : natural := 0;
+      variable v_trace     : natural := 0;
+      variable v_atn_trace : natural := 0;
       variable v_rd    : boolean := false;
       variable v_raddr : unsigned(31 downto 0) := (others => '0');
    begin
@@ -255,6 +275,19 @@ begin
                v_raddr := v_off;
             end if;
          end if;
+         if atn_live and v_atn_trace < G_TRACE_ATN
+            and (avm_read = '1' or avm_write = '1') then
+            v_atn_trace := v_atn_trace + 1;
+            v_off := unsigned(avm_address) - C_DRIVE_LO;
+            if avm_read = '1' then
+               report "   after ATN: rd $"
+                      & to_hstring(std_logic_vector(v_off(15 downto 0)));
+            else
+               report "   after ATN: wr $"
+                      & to_hstring(std_logic_vector(v_off(15 downto 0)));
+            end if;
+         end if;
+
          if rst = '0' and (avm_read = '1' or avm_write = '1') then
             n_access <= n_access + 1;
             if not got_first then
@@ -301,29 +334,39 @@ begin
       rst <= '0';
 
       ------------------------------------------------------------------------
-      -- 1. unmounted: the drive must be completely quiet
+      -- 1. no DOS ROM yet: the drive must be completely quiet
+      --
+      -- This is the safety property. The ROM is an optional auto-load file, so
+      -- the core has to boot on a card without it - and with no ROM the
+      -- drive's 6502 would fetch its reset vector out of uninitialised
+      -- HyperRAM, run away, and starve the video scaler of the bandwidth it
+      -- shares. Note it is the ROM, not a mounted disk, that gates this: the
+      -- drive is deliberately left running once started, so that its 1.5 s
+      -- power-on self test is not repeated on every mount.
       ------------------------------------------------------------------------
+      drive_en    <= '0';
       img_mounted <= '0';
       wait for 20000 * C_CLK_PERIOD;        -- ~634 us, far longer than bring-up
 
-      report "unmounted: " & integer'image(n_access) & " HyperRAM access(es)";
+      report "no DOS ROM: " & integer'image(n_access) & " HyperRAM access(es)";
       if n_access /= 0 then
-         report "FAIL: the drive accessed HyperRAM with no disk mounted - its "
-                & "6502 is running and will starve the video scaler"
-                severity error;
+         report "FAIL: the drive accessed HyperRAM before its DOS ROM was "
+                & "loaded - its 6502 is running on uninitialised memory and "
+                & "will starve the video scaler" severity error;
          v_bad := v_bad + 1;
       end if;
 
       ------------------------------------------------------------------------
-      -- 2. mounted: it must start fetching, from inside its own window
+      -- 2. released: it must start fetching, from inside its own window
       ------------------------------------------------------------------------
+      drive_en    <= '1';
       img_mounted <= '1';
       wait for G_RUN_MS * 1 ms;
 
-      report "mounted: " & integer'image(n_access) & " HyperRAM access(es)";
+      report "running: " & integer'image(n_access) & " HyperRAM access(es)";
       if n_access = 0 then
-         report "FAIL: the drive made no HyperRAM access after mounting - it is "
-                & "not fetching its DOS" severity error;
+         report "FAIL: the drive made no HyperRAM access after being released "
+                & "- it is not fetching its DOS" severity error;
          v_bad := v_bad + 1;
       end if;
 
@@ -361,13 +404,36 @@ begin
       ------------------------------------------------------------------------
       if G_ROM_FILE /= "" then
          report "asserting ATN; the drive should pull DATA low";
-         c64_atn <= '0';
+         atn_live <= true;
+         c64_atn  <= '0';
          for i in 1 to 1000 loop
             wait for 1 us;
             exit when drv_data_o = '0';
          end loop;
          if drv_data_o = '0' then
             report "the drive acknowledged ATN on DATA";
+
+            -- The acknowledge is pure hardware: cpu_part_1581 holds DATA low
+            -- whenever CIA port B bit 4 (atn_ack) is set and ATN is low. To
+            -- take part in the transfer the DOS has to notice the ATN
+            -- interrupt on the CIA FLAG input and clear that bit, releasing
+            -- DATA. Until it does, a controller waiting for "ready for data"
+            -- waits for ever - and that is indistinguishable from a dead
+            -- drive if you only check the acknowledge.
+            report "waiting for the DOS to release DATA";
+            for i in 1 to 30000 loop
+               wait for 1 us;
+               exit when drv_data_o = '1';
+            end loop;
+            if drv_data_o = '1' then
+               report "DATA released - the DOS is servicing the ATN interrupt";
+            else
+               report "FAIL: DATA still held low 30 ms after the acknowledge. "
+                      & "The hardware acknowledged ATN but the DOS never "
+                      & "cleared it, so it is not servicing the ATN interrupt"
+                      severity error;
+               v_bad := v_bad + 1;
+            end if;
          else
             report "FAIL: no DATA acknowledge within 1 ms of ATN - the drive "
                    & "is not listening to the controller" severity error;

@@ -76,6 +76,11 @@ architecture synthesis of c1581_disk_server is
    constant C_DRV_DRIVETYPE : unsigned(23 downto 0) := X"00000D";
 
    constant C_WD_CMD        : unsigned(23 downto 0) := X"001800";
+   -- Same address as C_WD_CMD, but on a write: bit 0 enables the index pulse
+   -- and bit 1 sets its polarity. wd177x.vhd only feeds the index pulse into
+   -- the type I status bit when this is enabled, and it comes out of reset
+   -- disabled, so a DOS that waits on INDEX after a seek waits for ever.
+   constant C_WD_IDXCTRL    : unsigned(23 downto 0) := X"001800";
    constant C_WD_TRACK      : unsigned(23 downto 0) := X"001801";
    constant C_WD_SECTOR     : unsigned(23 downto 0) := X"001802";
    constant C_WD_STAT_CLR   : unsigned(23 downto 0) := X"001804";
@@ -108,8 +113,9 @@ architecture synthesis of c1581_disk_server is
 
    type t_state is (
       RESET_ST, INIT_POWER_ST, INIT_TYPE_ST, INIT_ADDR_ST, INIT_SENSOR_ST,
-      INIT_INSERT_ST, INIT_CHNG_ST, INIT_RELEASE_ST,
-      POLL_ST, GET_CMD_ST, GET_SECTOR_ST, GET_SIDE_ST,
+      INIT_INSERT_ST, INIT_CHNG_ST, INIT_IDX_ST, INIT_RELEASE_ST,
+      POLL_ST, MEDIA_INS_ST,
+      GET_CMD_ST, GET_SECTOR_ST, GET_SIDE_ST,
       DECODE_ST, GET_SEEKTRK_ST, SET_TRACK_ST,
       SET_ADDR0_ST, SET_ADDR1_ST, SET_ADDR2_ST, SET_LEN0_ST, SET_LEN1_ST,
       SET_DMA_ST, WAIT_DMA_ST,
@@ -133,6 +139,14 @@ architecture synthesis of c1581_disk_server is
    -- is driven by the mechanics and is not used for addressing.
    signal head_track  : unsigned(7 downto 0) := (others => '0');
    signal step_in     : std_logic := '1';   -- direction of the last step
+
+   -- The drive is released from reset once, when its DOS ROM is in place, and
+   -- then left running - see the comment on drive_en_i in c1581_wrapper.vhd. So
+   -- the bring-up sequence only ever happens at power-on, and a disk arriving
+   -- or being swapped afterwards has to be reported separately. These watch for
+   -- that and fold it into the command loop.
+   signal mnt_q       : std_logic := '0';
+   signal media_dirty : std_logic := '0';
    signal offset      : unsigned(25 downto 0) := (others => '0');
    signal xfer_addr   : unsigned(25 downto 0) := (others => '0');
    signal is_write    : std_logic := '0';
@@ -168,6 +182,13 @@ begin
       variable v_lin : unsigned(25 downto 0);
    begin
       if rising_edge(clk_i) then
+
+         -- Notice a disk being inserted, removed or swapped. Checked every
+         -- cycle, independently of whatever transaction is in flight.
+         if img_mounted_i /= mnt_q then
+            mnt_q       <= img_mounted_i;
+            media_dirty <= '1';
+         end if;
 
          ----------------------------------------------------------------------
          -- Outstanding io transaction: wait for ack, then take next_state
@@ -242,7 +263,11 @@ begin
                -- trusting what it cached for whatever image was there before.
                when INIT_INSERT_ST  => do_write(C_DRV_DISKCHNG,
                                                 "0000000" & img_mounted_i,  INIT_CHNG_ST);
-               when INIT_CHNG_ST    => do_write(C_DRV_RESET,     X"00",     INIT_RELEASE_ST);
+
+               -- Enable the index pulse, active high. Without it the type I
+               -- status never reports INDEX and the disk looks stationary.
+               when INIT_CHNG_ST    => do_write(C_WD_IDXCTRL,   X"01",      INIT_IDX_ST);
+               when INIT_IDX_ST     => do_write(C_DRV_RESET,     X"00",     INIT_RELEASE_ST);
                when INIT_RELEASE_ST => do_read (C_WD_CMD_FLAGS,             POLL_ST);
 
                -- Wait for the drive to ask for something.
@@ -254,7 +279,20 @@ begin
                -- Reading it instead of maintaining the position means every
                -- seek is ignored and every sector comes off whatever track the
                -- DOS last wrote - which looks like a disk that never reads.
-               when POLL_ST         => do_read (C_WD_CMD_FLAGS,             GET_CMD_ST);
+               -- Report a media change first, then go back to listening.
+               -- floppy_inserted is what drives the drive's ready line, and
+               -- the change flag is what makes the DOS re-read the BAM instead
+               -- of trusting what it cached for the previous disk.
+               when POLL_ST =>
+                  if media_dirty = '1' then
+                     media_dirty <= '0';
+                     do_write(C_DRV_INSERTED,
+                              "0000000" & img_mounted_i,            MEDIA_INS_ST);
+                  else
+                     do_read (C_WD_CMD_FLAGS,                       GET_CMD_ST);
+                  end if;
+
+               when MEDIA_INS_ST    => do_write(C_DRV_DISKCHNG, X"01",  POLL_ST);
                when GET_CMD_ST      => do_read (C_WD_CMD,                   GET_SECTOR_ST);
                when GET_SECTOR_ST   => do_read (C_WD_SECTOR,                GET_SIDE_ST);
                when GET_SIDE_ST     => do_read (C_DRV_STATUS,               DECODE_ST);
@@ -385,6 +423,8 @@ begin
 
          ----------------------------------------------------------------------
          if rst_i = '1' then
+            mnt_q       <= img_mounted_i;
+            media_dirty <= '0';
             state   <= RESET_ST;
             pending <= '0';
             io_req  <= c_io_req_init;

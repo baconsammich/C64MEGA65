@@ -345,7 +345,7 @@ OSM_SEL_POST    INCRB
                 MOVE    M2M$CFD_DATA, R0
                 MOVE    @R0, R2
                 AND     0xFFFE, R2              ; clear bit 0
-                OR      R1, R2                  ; bit 0 = d81 mounted
+                OR      R1, R2                  ; bit 0 = a disk is in the drive
                 MOVE    R2, @R0
 
                 ; auto-reset if the user changes the kernal mode
@@ -368,16 +368,22 @@ _OSM_SEL_POST_R XOR     R8, R8
 ; menu item has been handled by the framework.
 OSM_SEL_PRE     INCRB
 
-                ; Put the C1581 back into reset before a *.d81 is loaded.
+                ; Tell the C1581 its disk has been taken out, before a new
+                ; *.d81 is loaded over the old one.
                 ;
                 ; This runs before the framework does the loading, which
                 ; matters for the second and every later mount: by then the
                 ; drive is running, and the Shell is about to overwrite the
                 ; disk image in HyperRAM underneath its 6502 and its WD177x
-                ; DMA. Leaving it running means the DOS executes against an
-                ; image that is changing under it while both masters fight for
-                ; HyperRAM, and the machine locks up. OSM_SEL_POST switches it
-                ; back on once the new image is complete.
+                ; DMA. Dropping "disk present" first takes the drive's ready
+                ; line away, so it abandons any transfer instead of reading an
+                ; image that is changing under it.
+                ;
+                ; Note this clears bit 0 only. Bit 1 - "the DOS ROM is loaded,
+                ; the drive may run" - stays set, so the drive is NOT reset and
+                ; does not repeat its 1.5 s power-on self test. OSM_SEL_POST
+                ; puts bit 0 back once the new image is complete, which the
+                ; drive sees as a disk change.
                 CMP     C64_OPTM_G_LOAD_D81, R8
                 RBRA    _OSM_SEL_PRE_1, !Z
                 MOVE    M2M$CFD_ADDR, R0

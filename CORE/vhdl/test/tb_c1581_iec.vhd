@@ -47,6 +47,7 @@ architecture sim of tb_c1581_iec is
    signal clk            : std_logic := '0';
    signal rst            : std_logic := '1';
    signal img_mounted    : std_logic := '0';
+   signal drive_en       : std_logic := '0';
    signal running        : boolean   := true;
 
    -- The bus itself: open collector, so every driver contributes '0' or 'Z'
@@ -114,6 +115,7 @@ begin
          clk_i               => clk,
          rst_i               => rst,
          img_base_i          => C_IMG_BASE,
+         drive_en_i          => drive_en,
          img_mounted_i       => img_mounted,
          img_readonly_i      => '0',
          drive_addr_i        => "01",            -- device 9
@@ -252,6 +254,7 @@ begin
       rst <= '1';
       wait for 20 * C_CLK_PERIOD;
       rst <= '0';
+      drive_en    <= '1';
       img_mounted <= '1';
       wait for G_BOOT_MS * 1 ms;
       report "DOS has had " & integer'image(G_BOOT_MS) & " ms to come up";
