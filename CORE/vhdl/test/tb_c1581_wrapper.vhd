@@ -111,6 +111,14 @@ architecture sim of tb_c1581_wrapper is
    signal worst_addr     : unsigned(31 downto 0) := (others => '0');
    signal n_img_access   : natural := 0;     -- reads/writes of the disk image
    signal atn_live        : boolean := false;
+
+   -- The disk server sits in POLL_ST whenever it has nothing to do, so busy_o
+   -- rising means the drive asked the WD177x for something. Counting those
+   -- separates "the DOS never touches the floppy controller" from "it does and
+   -- the transfer goes wrong", which look the same from the memory bus.
+   signal drv_busy        : std_logic;
+   signal drv_err         : std_logic;
+   signal n_cmds          : natural := 0;
    -- How much of its own 64 KB the drive actually touches. A healthy DOS ranges
    -- over its ROM; a crashed 6502 spinning on a handful of bytes does not, and
    -- the two look identical if you only count accesses.
@@ -152,8 +160,8 @@ begin
          iec_srq_o           => open,
          c64_reset_n_i       => '1',
          act_led_o           => open,
-         busy_o              => open,
-         err_o               => open,
+         busy_o              => drv_busy,
+         err_o               => drv_err,
          avm_write_o         => avm_write,
          avm_read_o          => avm_read,
          avm_address_o       => avm_address,
@@ -243,6 +251,17 @@ begin
    ------------------------------------------------------------------------------
    -- Watch the bus
    ------------------------------------------------------------------------------
+   p_cmds : process (clk)
+      variable v_busy_q : std_logic := '0';
+   begin
+      if rising_edge(clk) then
+         if drv_busy = '1' and v_busy_q = '0' then
+            n_cmds <= n_cmds + 1;
+         end if;
+         v_busy_q := drv_busy;
+      end if;
+   end process p_cmds;
+
    p_watch : process (clk)
       -- one flag per 256-byte page of the drive's 64 KB address space
       variable v_seen  : std_logic_vector(0 to 255) := (others => '0');
@@ -383,6 +402,18 @@ begin
          end if;
       end if;
 
+      -- A real DOS issues a handful of commands per operation. Anything in the
+      -- thousands means the disk server is servicing an empty command FIFO -
+      -- which also means it is clearing the WD177x BUSY status and popping the
+      -- FIFO continuously, destroying every real command the DOS issues.
+      report "WD177x commands serviced: " & integer'image(n_cmds);
+      if G_ROM_FILE /= "" and n_cmds > 1000 then
+         report "FAIL: " & integer'image(n_cmds) & " WD177x commands in "
+                & integer'image(G_RUN_MS) & " ms is impossible - the disk "
+                & "server is servicing phantom commands from an empty FIFO"
+                severity error;
+         v_bad := v_bad + 1;
+      end if;
       report "disk image accesses: " & integer'image(n_img_access);
       report "touched " & integer'image(n_pages) & " of 256 pages of its own "
              & "address space, from 0x" & to_hstring(std_logic_vector(lo_addr))

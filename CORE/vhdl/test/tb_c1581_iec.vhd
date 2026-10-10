@@ -31,7 +31,12 @@ entity tb_c1581_iec is
       G_ROM_FILE : string  := "";
       G_D81_FILE : string  := "";
       -- How long to let the DOS settle before talking to it, in milliseconds.
-      G_BOOT_MS  : natural := 60;
+      -- The 1581 needs a long time before it will answer: all 256 zero-page
+      -- bytes tested byte by byte, then two 255-unit delay loops at $C2E9.
+      -- Gideon's own reference test case waits 2500 ms after releasing reset
+      -- before it says a word to the drive, so take that as the real figure
+      -- and leave some margin.
+      G_BOOT_MS  : natural := 3000;
       -- Text expected somewhere in the directory, normally the disk name.
       G_EXPECT   : string  := ""
    );
@@ -272,6 +277,10 @@ begin
       -- blocking receive_byte at the end of every iteration - so with nothing
       -- talking it wedges there and never services another command, which
       -- looks exactly like the drive being silent.
+
+      -- Eight SRQ toggles. Not needed by the slow protocol, but it is what
+      -- the reference test case does before its first ATN, so do the same.
+      iec_drf(bfm);
 
       report "reading the error channel: TALK 9, channel 15";
       iec_send_atn(bfm, X"49");          -- TALK device 9

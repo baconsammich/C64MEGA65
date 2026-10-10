@@ -52,8 +52,23 @@ architecture harness of harness_c1581 is
     signal audio_sample : signed(12 downto 0);
 
     signal tick_4MHz    : std_logic := '0';
+    -- MODIFIED, simulation only: upstream does not drive the drive's
+    -- tick_1KHz port at all, so this harness no longer elaborates against the
+    -- current c1581_drive.vhd. Added so the vendor's own test case can be run
+    -- as a reference. 20 MHz / 20000 = 1 kHz.
+    signal tick_1KHz    : std_logic := '0';
 begin
     clock <= not clock after 25 ns;
+
+    p_tick_1khz : process
+    begin
+        tick_1KHz <= '0';
+        for i in 1 to 19999 loop
+            wait until clock = '1';
+        end loop;
+        wait until clock = '1';
+        tick_1KHz <= '1';
+    end process;
     reset <= '1', '0' after 1000 ns;
     
     process
@@ -86,6 +101,7 @@ begin
         
         -- timing
         tick_4MHz       => tick_4MHz,
+        tick_1KHz       => tick_1KHz,
 
         -- slave port on io bus
         io_req          => io_req,

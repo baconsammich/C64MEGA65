@@ -179,7 +179,8 @@ begin
          next_state     <= s;
       end procedure;
 
-      variable v_lin : unsigned(25 downto 0);
+      variable v_lin  : unsigned(25 downto 0);
+      variable v_next : t_state;
    begin
       if rising_edge(clk_i) then
 
@@ -199,6 +200,22 @@ begin
                io_req.write <= '0';
                pending      <= '0';
 
+               -- Where to go next. This has to be a variable, not the
+               -- next_state signal: a "stay here" decision below has to take
+               -- effect on this same clock edge. Assigning next_state here
+               -- instead would not be seen by the "state <= v_next" at the
+               -- bottom, which would read the value do_read/do_write set when
+               -- the request was issued - so the machine would advance anyway.
+               --
+               -- That cost a lot of debugging. With the signal, POLL_ST always
+               -- moved on to GET_CMD_ST even when the command FIFO was empty,
+               -- so the server serviced millions of phantom commands a second:
+               -- reading garbage, clearing the WD177x BUSY status and popping
+               -- the empty FIFO over and over. Any real command the DOS issued
+               -- was torn apart by that, so the drive never completed a seek,
+               -- never read a sector, and never got far enough to service ATN.
+               v_next := next_state;
+
                -- capture read data for the states that asked for it
                case state is
                   when GET_CMD_ST     => wd_cmd    <= io_resp_i.data;
@@ -210,7 +227,7 @@ begin
                   when POLL_ST       =>
                      -- bit 7 of $1806 is command_fifo_valid
                      if io_resp_i.data(7) = '0' then
-                        next_state <= POLL_ST;
+                        v_next := POLL_ST;
                      end if;
                   when WAIT_DMA_ST   =>
                      -- The controller signals completion by changing dma_mode
@@ -219,12 +236,12 @@ begin
                      -- wd177x.vhd). Waiting only for "00" hangs on every write.
                      if io_resp_i.data(1 downto 0) /= "00"
                         and io_resp_i.data(1 downto 0) /= "11" then
-                        next_state <= WAIT_DMA_ST;
+                        v_next := WAIT_DMA_ST;
                      end if;
                   when others        => null;
                end case;
 
-               state <= next_state;
+               state <= v_next;
             end if;
 
          ----------------------------------------------------------------------
