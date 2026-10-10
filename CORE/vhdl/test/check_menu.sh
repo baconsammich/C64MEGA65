@@ -217,8 +217,14 @@ def hmap(name):
 mem, rom, img = hmap('C_HMAP_1581_MEM'), hmap('C_HMAP_1581_ROM'), hmap('C_HMAP_1581_IMG')
 
 if None not in (mem, rom, img):
-    WIN_BYTES   = 8192          # a 4k window is 4096 *words*
-    DRIVE_WINS  = 8             # the drive's own address space is 64 KB
+    # A 4k window is 4096 sixteen-bit words, but the Shell's HyperRAM ROM
+    # loader stores one file byte per word (MOVE R9, @R5++ in
+    # M2M/rom/crts-and-roms.asm) and c1581_mem_bridge.vhd reads it back the
+    # same way, so a window holds 4096 *bytes* of the drive's address space.
+    # Assuming 8192 here is the factor-of-two mistake that puts the top of the
+    # image past the end of HyperRAM and onto the frame buffers.
+    WIN_BYTES   = 4096
+    DRIVE_WINS  = 65536 // WIN_BYTES   # the drive's 64 KB CPU address space
     D81_BYTES   = 819200        # 80 tracks x 2 sides x 10 sectors x 512
     D81_WINS    = -(-D81_BYTES // WIN_BYTES)
     HYPERRAM_WINS = 1024        # 8 MB
@@ -246,6 +252,20 @@ if None not in (mem, rom, img):
         die("the image needs windows 0x%03X..0x%03X but HyperRAM only has "
             "0x000..0x%03X - the top would wrap onto the framework's frame "
             "buffers" % (img, img + D81_WINS - 1, HYPERRAM_WINS - 1))
+
+    # The simulated cartridge grows upward from C_HMAP_CRT and is stored
+    # packed, two bytes per word, so it gets 8 KB per window. Report how much
+    # room the C1581 leaves it, and complain if the C1581 sits below it.
+    m = re.search(r'constant C_HMAP_CRT\s+: std_logic_vector\(15 downto 0\) := x"([0-9A-Fa-f]+)"', glb)
+    if m:
+        crt = int(m.group(1), 16)
+        if mem <= crt:
+            die("C_HMAP_1581_MEM 0x%03X is at or below C_HMAP_CRT 0x%03X - the "
+                "cartridge grows upward from there and would overwrite the drive"
+                % (mem, crt))
+        else:
+            print("   cartridge has 0x%03X windows below the C1581 -> %.2f MB "
+                  "packed" % (mem - crt, (mem - crt) * 4096 * 2 / 1048576))
 
 print()
 if die.bad:

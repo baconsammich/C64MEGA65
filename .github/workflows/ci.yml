@@ -121,6 +121,16 @@ jobs:
         working-directory: CORE/vhdl/test
         run: ./check_d81_geometry.py
 
+      # Simulate the drive. Checks that it issues no HyperRAM requests at all
+      # with no disk mounted - its 6502 fetches every instruction out of
+      # HyperRAM shared with the video scaler, so a drive that runs when it
+      # should not presents as the whole machine freezing - and that its first
+      # fetch after mounting is the 6502 reset vector at the top of its DOS ROM
+      # window. The second check is what catches a wrong HyperRAM byte layout.
+      - name: Run the C1581 testbench
+        working-directory: CORE/vhdl/test
+        run: ./run_tb_c1581.sh
+
       # GHDL cannot read Verilog, which leaves the ~70 Verilog and
       # SystemVerilog files of the MiSTer core unchecked. Verilator covers them.
       #

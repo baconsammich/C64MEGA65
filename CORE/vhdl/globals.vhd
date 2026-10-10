@@ -101,31 +101,54 @@ constant C_HMAP_CRT              : std_logic_vector(15 downto 0) := x"0200";    
 -- drive DMAs its own sectors out of HyperRAM rather than being handed blocks
 -- by QNICE, which is what keeps it in a single clock domain.
 --
--- A window is 4k words = 8 KB, and the HyperRAM is 8 MB, so windows run from
--- x"000" to x"3FF" - x"400" and beyond is off the end and the address mask in
--- reu_mapper/c1581_mem_bridge would wrap it onto the framework's own area.
--- The full map, in bytes:
+-- A window is 4k words, and the HyperRAM is 8 MB = 4 M words, so windows run
+-- from x"000" to x"3FF". x"400" and beyond is off the end, and the address mask
+-- in reu_mapper/c1581_mem_bridge wraps it onto the framework's own area. The
+-- full map, in windows:
 --
---   0x000000 .. 0x3FFFFF   M2M framework (ascal frame buffers)
---   0x400000 .. 0x47FFFF   simulated 1750 REU, 512 KB   (window x"200")
---   0x400000 .. 0x400000+n simulated cartridge, n = CRT file size (same base;
---                          the REU and a *.crt are mutually exclusive)
---   0x728000 .. 0x72FFFF   C1581 drive RAM, 32 KB          (window x"394")
---   0x730000 .. 0x737FFF   C1581 drive DOS ROM, 32 KB      (window x"398")
---   0x738000 .. 0x7FFFFF   C1581 *.d81 image, 819200 bytes (window x"39C")
+--   x"000" .. x"1FF"   M2M framework (ascal frame buffers), 4 MB
+--   x"200" ..          simulated 1750 REU, 512 KB
+--   x"200" ..          simulated cartridge, same base - the REU and a *.crt
+--                      are mutually exclusive. The CRT is stored packed, two
+--                      bytes per word, so it has 8 KB of room per window and
+--                      everything up to x"320" below, i.e. about 2.25 MB.
+--                      No real C64 cartridge comes close.
+--   x"320" .. x"32F"   C1581 drive address space, 64 KB
+--   x"328" .. x"32F"   C1581 drive DOS ROM, 32 KB (inside the above)
+--   x"330" .. x"3F7"   C1581 *.d81 image, 819200 bytes
 --
--- The C1581 is packed against the top so that it stays clear of a *.crt of up
--- to 3.3 MB, which is far larger than any real cartridge.
+-- The C1581 is packed against the top so that it leaves the cartridge as much
+-- contiguous room below it as possible.
+--
+-- Why the C1581 windows are counted in 4096-byte units and not 8192
+-- ------------------------------------------------------------------
+-- A 4k window is 4096 sixteen-bit words, which is 8192 bytes of raw HyperRAM.
+-- But the drive's ROM and its disk image are put there by the Shell through
+-- the C_CRTROMTYPE_HYPERRAM entries below, and that loader writes *one file
+-- byte per word* with the high half left at zero (MOVE R9, @R5++ in
+-- M2M/rom/crts-and-roms.asm). So a window holds 4096 bytes of payload, and
+-- c1581_mem_bridge.vhd reads it back the same way, one byte per word. See the
+-- long note at the top of that file - it is the one non-obvious thing about
+-- this whole subsystem.
+--
+-- That makes the drive's 64 KB address space 16 windows and the 819200-byte
+-- *.d81 200 windows. Getting this wrong by a factor of two is not harmless:
+-- 200 windows starting at x"39C" would run to x"463", and the HyperRAM is only
+-- x"400" windows deep, so the top of the image would wrap straight onto the
+-- framework's ascal frame buffers and take the video output down with it.
 --
 -- cpu_part_1581.vhd maps the drive's whole 64 KB CPU address space onto
 -- g_ram_base, so its ROM sits at CPU $8000..$FFFF, i.e. 32 KB into the block -
--- which is why the DOS ROM loads at x"398" and not at the block base. Loading
--- it at the base instead puts it in the RAM half, leaves the 6502's reset
--- vector reading whatever happens to be in HyperRAM, and the resulting runaway
--- fetches starve the video scaler of bandwidth and lock the machine up.
-constant C_HMAP_1581_MEM         : std_logic_vector(15 downto 0) := x"0394";     -- drive RAM/ROM block, 8 windows
-constant C_HMAP_1581_ROM         : std_logic_vector(15 downto 0) := x"0398";     -- DOS ROM within it, 4 windows
-constant C_HMAP_1581_IMG         : std_logic_vector(15 downto 0) := x"039C";     -- *.d81 image, 100 windows
+-- which is why the DOS ROM loads 8 windows in and not at the block base.
+-- Loading it at the base instead puts it in the RAM half, leaves the 6502's
+-- reset vector reading whatever happens to be in HyperRAM, and the resulting
+-- runaway fetches starve the video scaler of bandwidth and lock the machine up.
+--
+-- CORE/vhdl/test/check_menu.sh checks this layout; main.vhd range-constrains
+-- the constants it derives from it.
+constant C_HMAP_1581_MEM         : std_logic_vector(15 downto 0) := x"0320";     -- drive address space, 16 windows
+constant C_HMAP_1581_ROM         : std_logic_vector(15 downto 0) := x"0328";     -- DOS ROM within it, 8 windows
+constant C_HMAP_1581_IMG         : std_logic_vector(15 downto 0) := x"0330";     -- *.d81 image, 200 windows
 
 ----------------------------------------------------------------------------------------------------------
 -- Virtual Drive Management System
