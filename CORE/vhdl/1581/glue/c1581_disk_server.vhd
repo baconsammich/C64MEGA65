@@ -87,6 +87,15 @@ architecture synthesis of c1581_disk_server is
    constant C_WD_ADDR_2     : unsigned(23 downto 0) := X"00180A";
    constant C_WD_LEN_0      : unsigned(23 downto 0) := X"00180C";
    constant C_WD_LEN_1      : unsigned(23 downto 0) := X"00180D";
+   constant C_WD_DATA       : unsigned(23 downto 0) := X"001803";
+
+   -- The side, awkwardly. drive_registers has a "side" register at $0006, but
+   -- c1581_drive.vhd leaves that input unconnected, so it always reads 0.
+   -- The side actually arrives through the port it wires to "mode": the status
+   -- register reports "not mode", and mode is side_0 - CIA port A bit 0, the
+   -- 1581's side-select line. So status bit 1 is the side number. This is what
+   -- Gideon's own host model reads (sim/c1581_startup_tc.vhd).
+   constant C_DRV_STATUS    : unsigned(23 downto 0) := X"000009";
 
    -- Status bit 0 is BUSY (see the aliases in wd177x.vhd)
    constant C_ST_BUSY       : std_logic_vector(7 downto 0) := X"01";
@@ -94,12 +103,14 @@ architecture synthesis of c1581_disk_server is
 
    constant C_SECTOR_LEN    : natural := 512;
    constant C_SECTORS_TRACK : natural := 10;
+   constant C_TRACKS        : natural := 80;    -- cylinders in a *.d81
+   constant C_MAX_TRACK     : natural := 83;    -- what the mechanics allow
 
    type t_state is (
       RESET_ST, INIT_POWER_ST, INIT_TYPE_ST, INIT_ADDR_ST, INIT_SENSOR_ST,
       INIT_INSERT_ST, INIT_CHNG_ST, INIT_RELEASE_ST,
-      POLL_ST, GET_CMD_ST, GET_TRACK_ST, GET_SECTOR_ST, GET_SIDE_ST,
-      DECODE_ST,
+      POLL_ST, GET_CMD_ST, GET_SECTOR_ST, GET_SIDE_ST,
+      DECODE_ST, GET_SEEKTRK_ST, SET_TRACK_ST,
       SET_ADDR0_ST, SET_ADDR1_ST, SET_ADDR2_ST, SET_LEN0_ST, SET_LEN1_ST,
       SET_DMA_ST, WAIT_DMA_ST,
       SET_ERR_ST, CLEAR_BUSY_ST, POP_ST
@@ -112,9 +123,16 @@ architecture synthesis of c1581_disk_server is
    signal next_state  : t_state := RESET_ST;
 
    signal wd_cmd      : std_logic_vector(7 downto 0) := (others => '0');
-   signal wd_track    : unsigned(7 downto 0) := (others => '0');
    signal wd_sector   : unsigned(7 downto 0) := (others => '0');
    signal wd_side     : std_logic := '0';
+
+   -- Where the head is. This is the host's job to know, which is the whole
+   -- point of the seek and step commands below: the WD1772 track register is
+   -- only what the DOS believes, and on real hardware the controller updates
+   -- it as it steps. Nothing else here tracks it - the drive's own cur_track
+   -- is driven by the mechanics and is not used for addressing.
+   signal head_track  : unsigned(7 downto 0) := (others => '0');
+   signal step_in     : std_logic := '1';   -- direction of the last step
    signal offset      : unsigned(25 downto 0) := (others => '0');
    signal xfer_addr   : unsigned(25 downto 0) := (others => '0');
    signal is_write    : std_logic := '0';
@@ -162,18 +180,24 @@ begin
 
                -- capture read data for the states that asked for it
                case state is
-                  when GET_CMD_ST    => wd_cmd    <= io_resp_i.data;
-                  when GET_TRACK_ST  => wd_track  <= unsigned(io_resp_i.data);
-                  when GET_SECTOR_ST => wd_sector <= unsigned(io_resp_i.data);
-                  when GET_SIDE_ST   => wd_side   <= io_resp_i.data(0);
+                  when GET_CMD_ST     => wd_cmd    <= io_resp_i.data;
+                  when GET_SECTOR_ST  => wd_sector <= unsigned(io_resp_i.data);
+                  -- status bit 1 is the side; see C_DRV_STATUS above
+                  when GET_SIDE_ST    => wd_side   <= io_resp_i.data(1);
+                  -- a seek takes its target from the WD1772 data register
+                  when GET_SEEKTRK_ST => head_track <= unsigned(io_resp_i.data);
                   when POLL_ST       =>
                      -- bit 7 of $1806 is command_fifo_valid
                      if io_resp_i.data(7) = '0' then
                         next_state <= POLL_ST;
                      end if;
                   when WAIT_DMA_ST   =>
-                     -- controller clears DMA mode when the transfer is done
-                     if io_resp_i.data(1 downto 0) /= "00" then
+                     -- The controller signals completion by changing dma_mode
+                     -- itself: "00" after a read, but "11" - "write complete"
+                     -- - after a write (see the dma_state machine in
+                     -- wd177x.vhd). Waiting only for "00" hangs on every write.
+                     if io_resp_i.data(1 downto 0) /= "00"
+                        and io_resp_i.data(1 downto 0) /= "11" then
                         next_state <= WAIT_DMA_ST;
                      end if;
                   when others        => null;
@@ -221,43 +245,115 @@ begin
                when INIT_CHNG_ST    => do_write(C_DRV_RESET,     X"00",     INIT_RELEASE_ST);
                when INIT_RELEASE_ST => do_read (C_WD_CMD_FLAGS,             POLL_ST);
 
-               -- Wait for the drive to ask for something
+               -- Wait for the drive to ask for something.
+               --
+               -- The track is deliberately not read from the WD1772 track
+               -- register here. That register is the DOS's belief about where
+               -- the head is; on real hardware the controller updates it while
+               -- it steps, and emulating the controller is this module's job.
+               -- Reading it instead of maintaining the position means every
+               -- seek is ignored and every sector comes off whatever track the
+               -- DOS last wrote - which looks like a disk that never reads.
                when POLL_ST         => do_read (C_WD_CMD_FLAGS,             GET_CMD_ST);
-               when GET_CMD_ST      => do_read (C_WD_CMD,                   GET_TRACK_ST);
-               when GET_TRACK_ST    => do_read (C_WD_TRACK,                 GET_SECTOR_ST);
+               when GET_CMD_ST      => do_read (C_WD_CMD,                   GET_SECTOR_ST);
                when GET_SECTOR_ST   => do_read (C_WD_SECTOR,                GET_SIDE_ST);
-               when GET_SIDE_ST     => do_read (C_DRV_SIDE,                 DECODE_ST);
+               when GET_SIDE_ST     => do_read (C_DRV_STATUS,               DECODE_ST);
 
-               -- Work out what was asked for. WD177x command encoding:
-               --   8/9 = read sector, A/B = write sector, D = force interrupt,
-               --   0..7 = seek and step, which the controller does on its own.
+               -- Work out what was asked for. WD1772 type I commands move the
+               -- head and the controller - this module - owns the resulting
+               -- position; type II commands transfer a sector.
+               --
+               --   0000 xxxx  restore, head to track 0
+               --   0001 xxxx  seek, target in the data register
+               --   001u xxxx  step again in the last direction
+               --   010u xxxx  step in  (towards the spindle, track + 1)
+               --   011u xxxx  step out (towards track 0, track - 1)
+               --   100x xxxx  read sector
+               --   101x xxxx  write sector
+               --   1101 xxxx  force interrupt
+               --
+               -- "u" asks for the track register to be updated as well. The
+               -- WD1772 datasheet has step in incrementing the track register;
+               -- Gideon's host model in sim/c1581_startup_tc.vhd has those two
+               -- the other way round, which goes unnoticed there because the
+               -- 1581 DOS seeks rather than steps.
                when DECODE_ST =>
                   v_lin := (others => '0');
-                  if img_mounted_i = '0' then
-                     state <= SET_ERR_ST;
-                  elsif wd_cmd(7 downto 5) = "100" then       -- 8 or 9: read
-                     is_write <= '0';
-                     state    <= SET_ADDR0_ST;
-                  elsif wd_cmd(7 downto 5) = "101" then       -- A or B: write
-                     if img_readonly_i = '1' then
+
+                  if wd_cmd(7 downto 4) = "0000" then         -- restore
+                     head_track <= (others => '0');
+                     state      <= SET_TRACK_ST;
+
+                  elsif wd_cmd(7 downto 4) = "0001" then      -- seek
+                     -- head_track is captured from the read, then written back
+                     state <= GET_SEEKTRK_ST;
+
+                  elsif wd_cmd(7 downto 5) = "001"            -- step
+                     or  wd_cmd(7 downto 5) = "010"           -- step in
+                     or  wd_cmd(7 downto 5) = "011" then      -- step out
+                     if wd_cmd(7 downto 5) = "010" then
+                        step_in <= '1';
+                     elsif wd_cmd(7 downto 5) = "011" then
+                        step_in <= '0';
+                     end if;
+
+                     if (wd_cmd(7 downto 5) = "010")
+                        or (wd_cmd(7 downto 5) = "001" and step_in = '1') then
+                        if head_track < C_MAX_TRACK then
+                           head_track <= head_track + 1;
+                        end if;
+                     else
+                        if head_track > 0 then
+                           head_track <= head_track - 1;
+                        end if;
+                     end if;
+
+                     if wd_cmd(4) = '1' then                  -- update flag
+                        state <= SET_TRACK_ST;
+                     else
+                        state <= CLEAR_BUSY_ST;
+                     end if;
+
+                  elsif wd_cmd(7 downto 5) = "100"            -- read sector
+                     or  wd_cmd(7 downto 5) = "101" then      -- write sector
+                     -- Refuse anything that is not actually on the disk rather
+                     -- than computing an address outside the image: the head
+                     -- can step to 83 but a *.d81 only holds 80 cylinders.
+                     if img_mounted_i = '0'
+                        or head_track >= C_TRACKS
+                        or wd_sector = 0
+                        or wd_sector > C_SECTORS_TRACK
+                        or (wd_cmd(7 downto 5) = "101" and img_readonly_i = '1')
+                     then
                         state <= SET_ERR_ST;
                      else
-                        is_write <= '1';
+                        is_write <= wd_cmd(5);
                         state    <= SET_ADDR0_ST;
                      end if;
+
+                     -- offset = (((track*2) + side)*10 + (sector-1)) * 512
+                     if wd_sector /= 0 then
+                        v_lin := resize((((head_track & '0')
+                                          + ("0000000" & wd_side))
+                                         * C_SECTORS_TRACK
+                                         + (wd_sector - 1)) * C_SECTOR_LEN, 26);
+                     end if;
+
                   else
-                     -- seek, step or force interrupt: nothing to transfer
+                     -- force interrupt and anything unrecognised
                      state <= CLEAR_BUSY_ST;
                   end if;
 
-                  -- offset = (((track*2) + side)*10 + (sector-1)) * 512
-                  if wd_sector /= 0 then
-                     v_lin := resize((((wd_track & '0') + ("0000000" & wd_side))
-                                      * C_SECTORS_TRACK
-                                      + (wd_sector - 1)) * C_SECTOR_LEN, 26);
-                  end if;
                   offset    <= v_lin;
                   xfer_addr <= unsigned(img_base_i) + v_lin;
+
+               -- Seek: the target track is in the WD1772 data register. The
+               -- read lands in head_track, then it is written back to the
+               -- track register so the DOS sees the move it asked for.
+               when GET_SEEKTRK_ST => do_read (C_WD_DATA,                   SET_TRACK_ST);
+
+               when SET_TRACK_ST   => do_write(C_WD_TRACK,
+                                        std_logic_vector(head_track),       CLEAR_BUSY_ST);
 
                when SET_ADDR0_ST => do_write(C_WD_ADDR_0,
                                        std_logic_vector(xfer_addr( 7 downto  0)), SET_ADDR1_ST);
