@@ -14,6 +14,17 @@
 #      was given. That is the arithmetic that decides whether the drive finds
 #      its DOS at all.
 #
+# Without arguments the memory is filled with $EA (6502 NOP), which is enough
+# for the addressing checks and needs no copyrighted files - that is what CI
+# runs.
+#
+# With a real 1581 DOS dump it goes further: it boots the drive for real and
+# checks that it acknowledges ATN by pulling DATA low, which is the check that
+# catches the drive being wired to the wrong side of the IEC bus. Those ROMs
+# are not in this repository, so point at your own:
+#
+#   ROM=~/roms/1581.rom D81=~/roms/some.d81 RUN_MS=150 ./run_tb_c1581.sh
+#
 # Usage: ./run_tb_c1581.sh
 ##############################################################################
 set -uo pipefail
@@ -84,9 +95,18 @@ ghdl -a --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_wrapper.vhd \
 ghdl -e --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_wrapper \
     >"$WORKDIR/e2" 2>&1 || { grep -m5 "error:" "$WORKDIR/e2" | sed 's/^/   /'; exit 1; }
 
-# --stop-time is a backstop: the testbench ends itself by stopping the clock.
+# An array, not a string: ROM and D81 paths routinely contain spaces.
+GENERICS=()
+[ -n "${ROM:-}" ]    && GENERICS+=("-gG_ROM_FILE=$ROM")
+[ -n "${D81:-}" ]    && GENERICS+=("-gG_D81_FILE=$D81")
+[ -n "${RUN_MS:-}" ] && GENERICS+=("-gG_RUN_MS=$RUN_MS")
+[ ${#GENERICS[@]} -gt 0 ] && printf '   with %s\n' "${GENERICS[@]}"
+
+# The testbench ends itself by stopping the clock; --stop-time is a backstop,
+# and has to be well clear of G_RUN_MS.
+STOP_MS=$(( ${RUN_MS:-2} + 250 ))
 ghdl -r --workdir="$WORKDIR" $GHDL_OPTS -P"$WORKDIR" tb_c1581_wrapper \
-    --stop-time=5ms >"$WORKDIR/run" 2>&1
+    "${GENERICS[@]}" --stop-time="${STOP_MS}ms" >"$WORKDIR/run" 2>&1
 rc=$?
 
 # GHDL prints notes to stderr with a file:line:time prefix; show just the text.

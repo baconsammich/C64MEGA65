@@ -27,6 +27,20 @@ use ieee.numeric_std.all;
 library c1581_lib;
 
 entity tb_c1581_wrapper is
+   generic (
+      -- Optional, and empty by default: with a real 1581 DOS dump here the
+      -- testbench additionally boots the drive for real and reports where it
+      -- goes. Those ROMs are copyrighted and are not in this repository, so CI
+      -- runs without them and the memory is filled with $EA (6502 NOP)
+      -- instead, which still exercises the addressing checks.
+      G_ROM_FILE : string := "";
+      G_D81_FILE : string := "";
+      -- How long to let the drive run after mounting, in milliseconds. The
+      -- default is only long enough for the addressing checks; give it a
+      -- hundred or more together with a real G_ROM_FILE to watch the DOS
+      -- actually initialise and start touching the disk.
+      G_RUN_MS   : natural := 2
+   );
 end entity tb_c1581_wrapper;
 
 architecture sim of tb_c1581_wrapper is
@@ -43,11 +57,23 @@ architecture sim of tb_c1581_wrapper is
    constant C_DRIVE_HI   : unsigned(31 downto 0) := unsigned(C_MEM_BASE) + 16#10000#;
    -- where the 6502 reset vector ($FFFC) has to show up
    constant C_RESET_VEC  : unsigned(31 downto 0) := unsigned(C_MEM_BASE) + 16#FFFC#;
+   -- the *.d81 starts right above the drive's address space
+   constant C_IMG_LO     : unsigned(31 downto 0) := C_DRIVE_HI;
+   constant C_IMG_HI     : unsigned(31 downto 0) := C_DRIVE_HI + 819200;
 
    signal clk            : std_logic := '0';
    signal rst            : std_logic := '1';
    signal img_mounted    : std_logic := '0';
    signal running        : boolean   := true;
+
+   -- The IEC lines as the controller drives them: open collector, so '1' is
+   -- released and '0' is pulled low.
+   signal c64_atn        : std_logic := '1';
+   signal c64_clk        : std_logic := '1';
+   signal c64_data       : std_logic := '1';
+   -- and what the drive drives back
+   signal drv_clk_o      : std_logic;
+   signal drv_data_o     : std_logic;
 
    signal avm_write      : std_logic;
    signal avm_read       : std_logic;
@@ -65,6 +91,7 @@ architecture sim of tb_c1581_wrapper is
    signal got_first      : boolean := false;
    signal out_of_window  : natural := 0;
    signal worst_addr     : unsigned(31 downto 0) := (others => '0');
+   signal n_img_access   : natural := 0;     -- reads/writes of the disk image
 
 begin
 
@@ -89,13 +116,13 @@ begin
          img_mounted_i       => img_mounted,
          img_readonly_i      => '0',
          drive_addr_i        => "01",
-         iec_atn_i           => '1',
-         iec_clk_i           => '1',
-         iec_data_i          => '1',
+         iec_atn_i           => c64_atn,
+         iec_clk_i           => c64_clk,
+         iec_data_i          => c64_data,
          iec_srq_i           => '1',
          iec_atn_o           => open,
-         iec_clk_o           => open,
-         iec_data_o          => open,
+         iec_clk_o           => drv_clk_o,
+         iec_data_o          => drv_data_o,
          iec_srq_o           => open,
          c64_reset_n_i       => '1',
          act_led_o           => open,
@@ -113,18 +140,74 @@ begin
       );
 
    ------------------------------------------------------------------------------
-   -- A minimal HyperRAM: always ready, answers a read two cycles later with
-   -- 0x00EA - a 6502 NOP in the low byte, which is where the Shell's loader
-   -- puts data and where the bridge reads it from - so the CPU keeps fetching
-   -- instead of stopping. The data barely matters here; the addresses do.
+   -- A HyperRAM model: always ready, answers a read two cycles later.
+   --
+   -- It holds the drive's whole window plus the image, one byte per 16-bit
+   -- word in the low half, which is how the Shell's loader writes it - see the
+   -- note at the top of c1581_mem_bridge.vhd. Default fill is $EA, a 6502 NOP,
+   -- so the CPU keeps fetching even with no ROM supplied.
    ------------------------------------------------------------------------------
    p_hyperram : process (clk)
-      variable v_pipe : std_logic_vector(1 downto 0) := "00";
+      -- Drive address space (64 KB) plus the image (819200 B), as words.
+      constant C_MEM_WORDS : natural := 16#10000# + 819200;
+      type t_mem is array (0 to C_MEM_WORDS - 1) of std_logic_vector(7 downto 0);
+      type t_byte_file is file of character;
+
+      variable v_mem    : t_mem := (others => X"EA");
+      variable v_pipe   : std_logic_vector(1 downto 0) := "00";
+      variable v_addr_q : natural := 0;
+      variable v_init   : boolean := false;
+      variable v_idx    : natural;
+
+      -- Read a file into v_mem at a byte offset in the drive's address space.
+      procedure load (fname : string; offset : natural; what : string) is
+         file     f    : t_byte_file;
+         variable st   : file_open_status;
+         variable ch   : character;
+         variable n    : natural := 0;
+      begin
+         if fname = "" then
+            return;
+         end if;
+         file_open(st, f, fname, read_mode);
+         if st /= open_ok then
+            report "could not open " & what & " " & fname severity warning;
+            return;
+         end if;
+         while not endfile(f) and offset + n < C_MEM_WORDS loop
+            read(f, ch);
+            v_mem(offset + n) := std_logic_vector(
+                                    to_unsigned(character'pos(ch), 8));
+            n := n + 1;
+         end loop;
+         file_close(f);
+         report what & ": " & integer'image(n) & " bytes at drive offset 0x"
+                & to_hstring(std_logic_vector(to_unsigned(offset, 24)));
+      end procedure;
    begin
       if rising_edge(clk) then
-         avm_rdvalid  <= v_pipe(1);
-         avm_readdata <= X"00EA";
-         v_pipe       := v_pipe(0) & avm_read;
+         if not v_init then
+            -- The DOS ROM sits at CPU $8000, the image just above the 64 KB.
+            load(G_ROM_FILE, 16#8000#,  "DOS ROM");
+            load(G_D81_FILE, 16#10000#, "disk image");
+            v_init := true;
+         end if;
+
+         avm_rdvalid <= v_pipe(1);
+         if v_pipe(1) = '1' then
+            avm_readdata <= X"00" & v_mem(v_addr_q);
+         end if;
+
+         if avm_read = '1' or avm_write = '1' then
+            v_idx := to_integer(unsigned(avm_address) - unsigned(C_MEM_BASE));
+            if v_idx < C_MEM_WORDS then
+               v_addr_q := v_idx;
+               if avm_write = '1' and avm_byteenable(0) = '1' then
+                  v_mem(v_idx) := avm_writedata(7 downto 0);
+               end if;
+            end if;
+         end if;
+         v_pipe := v_pipe(0) & avm_read;
       end if;
    end process p_hyperram;
 
@@ -140,7 +223,11 @@ begin
                first_addr <= unsigned(avm_address);
                got_first  <= true;
             end if;
-            if unsigned(avm_address) < C_DRIVE_LO
+            if unsigned(avm_address) >= C_IMG_LO
+               and unsigned(avm_address) < C_IMG_HI then
+               -- the drive reaching into the image means it is doing disk I/O
+               n_img_access <= n_img_access + 1;
+            elsif unsigned(avm_address) < C_DRIVE_LO
                or unsigned(avm_address) >= C_DRIVE_HI then
                out_of_window <= out_of_window + 1;
                worst_addr    <= unsigned(avm_address);
@@ -179,7 +266,7 @@ begin
       -- 2. mounted: it must start fetching, from inside its own window
       ------------------------------------------------------------------------
       img_mounted <= '1';
-      wait for 60000 * C_CLK_PERIOD;        -- ~1.9 ms
+      wait for G_RUN_MS * 1 ms;
 
       report "mounted: " & integer'image(n_access) & " HyperRAM access(es)";
       if n_access = 0 then
@@ -201,16 +288,44 @@ begin
          end if;
       end if;
 
+      report "disk image accesses: " & integer'image(n_img_access);
+
+      ------------------------------------------------------------------------
+      -- 3. the drive has to answer on the IEC bus
+      --
+      -- Only meaningful with a real DOS: a booted drive must acknowledge ATN
+      -- by pulling DATA low, within 1 ms per the IEC timing. This is the check
+      -- that catches the drive being wired to the wrong side of the bus - it
+      -- boots and runs perfectly either way, it just never hears the computer.
+      ------------------------------------------------------------------------
+      if G_ROM_FILE /= "" then
+         report "asserting ATN; the drive should pull DATA low";
+         c64_atn <= '0';
+         for i in 1 to 1000 loop
+            wait for 1 us;
+            exit when drv_data_o = '0';
+         end loop;
+         if drv_data_o = '0' then
+            report "the drive acknowledged ATN on DATA";
+         else
+            report "FAIL: no DATA acknowledge within 1 ms of ATN - the drive "
+                   & "is not listening to the controller" severity error;
+            v_bad := v_bad + 1;
+         end if;
+         c64_atn <= '1';
+      end if;
+
       if out_of_window /= 0 then
          report "FAIL: " & integer'image(out_of_window) & " access(es) outside "
-                & "the drive's window, e.g. 0x"
+                & "both the drive window and the disk image, e.g. 0x"
                 & to_hstring(std_logic_vector(worst_addr))
                 severity error;
          v_bad := v_bad + 1;
       else
          report "all accesses inside the drive window 0x"
                 & to_hstring(std_logic_vector(C_DRIVE_LO)) & "..0x"
-                & to_hstring(std_logic_vector(C_DRIVE_HI - 1));
+                & to_hstring(std_logic_vector(C_DRIVE_HI - 1))
+                & " or the image above it";
       end if;
 
       if v_bad = 0 then
