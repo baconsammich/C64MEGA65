@@ -39,7 +39,11 @@ entity tb_c1581_wrapper is
       -- default is only long enough for the addressing checks; give it a
       -- hundred or more together with a real G_ROM_FILE to watch the DOS
       -- actually initialise and start touching the disk.
-      G_RUN_MS   : natural := 2
+      G_RUN_MS   : natural := 2;
+      -- Log the first N accesses that fall in the drive's zero page. The DOS
+      -- reset handler tests zero page byte by byte before it does anything
+      -- else, so this shows whether RAM reads back what was written.
+      G_TRACE_ZP : natural := 0
    );
 end entity tb_c1581_wrapper;
 
@@ -92,6 +96,12 @@ architecture sim of tb_c1581_wrapper is
    signal out_of_window  : natural := 0;
    signal worst_addr     : unsigned(31 downto 0) := (others => '0');
    signal n_img_access   : natural := 0;     -- reads/writes of the disk image
+   -- How much of its own 64 KB the drive actually touches. A healthy DOS ranges
+   -- over its ROM; a crashed 6502 spinning on a handful of bytes does not, and
+   -- the two look identical if you only count accesses.
+   signal n_pages        : natural := 0;
+   signal lo_addr        : unsigned(31 downto 0) := (others => '1');
+   signal hi_addr        : unsigned(31 downto 0) := (others => '0');
 
 begin
 
@@ -215,13 +225,55 @@ begin
    -- Watch the bus
    ------------------------------------------------------------------------------
    p_watch : process (clk)
+      -- one flag per 256-byte page of the drive's 64 KB address space
+      variable v_seen  : std_logic_vector(0 to 255) := (others => '0');
+      variable v_off   : unsigned(31 downto 0);
+      variable v_trace : natural := 0;
+      variable v_rd    : boolean := false;
+      variable v_raddr : unsigned(31 downto 0) := (others => '0');
    begin
       if rising_edge(clk) then
+         -- a read logged here shows the data one cycle late, when it arrives
+         if v_rd and avm_rdvalid = '1' then
+            report "   zp read  0x" & to_hstring(std_logic_vector(v_raddr(7 downto 0)))
+                   & " -> 0x" & to_hstring(avm_readdata(7 downto 0));
+            v_rd := false;
+         end if;
+
+         if v_trace < G_TRACE_ZP and rst = '0'
+            and (avm_read = '1' or avm_write = '1')
+            and unsigned(avm_address) >= C_DRIVE_LO
+            and unsigned(avm_address) < C_DRIVE_LO + 256 then
+            v_trace := v_trace + 1;
+            v_off := unsigned(avm_address) - C_DRIVE_LO;
+            if avm_write = '1' then
+               report "   zp write 0x" & to_hstring(std_logic_vector(v_off(7 downto 0)))
+                      & " <- 0x" & to_hstring(avm_writedata(7 downto 0))
+                      & "  be=" & to_hstring(avm_byteenable);
+            else
+               v_rd    := true;
+               v_raddr := v_off;
+            end if;
+         end if;
          if rst = '0' and (avm_read = '1' or avm_write = '1') then
             n_access <= n_access + 1;
             if not got_first then
                first_addr <= unsigned(avm_address);
                got_first  <= true;
+            end if;
+            if unsigned(avm_address) < lo_addr then
+               lo_addr <= unsigned(avm_address);
+            end if;
+            if unsigned(avm_address) > hi_addr then
+               hi_addr <= unsigned(avm_address);
+            end if;
+            if unsigned(avm_address) >= C_DRIVE_LO
+               and unsigned(avm_address) < C_DRIVE_HI then
+               v_off := unsigned(avm_address) - C_DRIVE_LO;
+               if v_seen(to_integer(v_off(15 downto 8))) = '0' then
+                  v_seen(to_integer(v_off(15 downto 8))) := '1';
+                  n_pages <= n_pages + 1;
+               end if;
             end if;
             if unsigned(avm_address) >= C_IMG_LO
                and unsigned(avm_address) < C_IMG_HI then
@@ -289,6 +341,15 @@ begin
       end if;
 
       report "disk image accesses: " & integer'image(n_img_access);
+      report "touched " & integer'image(n_pages) & " of 256 pages of its own "
+             & "address space, from 0x" & to_hstring(std_logic_vector(lo_addr))
+             & " to 0x" & to_hstring(std_logic_vector(hi_addr));
+      if G_ROM_FILE /= "" and n_pages < 16 then
+         report "FAIL: the drive only ranged over " & integer'image(n_pages)
+                & " page(s) - its 6502 is not running the DOS, it is spinning"
+                severity error;
+         v_bad := v_bad + 1;
+      end if;
 
       ------------------------------------------------------------------------
       -- 3. the drive has to answer on the IEC bus

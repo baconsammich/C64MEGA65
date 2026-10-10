@@ -116,16 +116,32 @@ begin
    avm_write_o      <= avm_write_r;
    avm_read_o       <= avm_read_r;
 
-   mem_resp_o       <= resp;
+   -- data and the data-acknowledge are registered; the request-acknowledge is
+   -- combinational, asserted in the same cycle the request is latched.
+   --
+   -- That timing is not cosmetic. The master holds mem_req.request asserted
+   -- until it sees rack, so a registered rack arrives a cycle late, the master
+   -- drops request a cycle after that, and by then this state machine is back
+   -- in IDLE looking at a request that is still high - and issues the whole
+   -- transaction a second time. Every access to the drive's RAM, its ROM and
+   -- its disk image was going to HyperRAM twice, for double the bandwidth out
+   -- of a bus shared with the video scaler. Gideon's own reference slave
+   -- (mem_bus_32_slave_bfm.vhd) acknowledges combinationally for the same
+   -- reason.
+   mem_resp_o.data     <= resp.data;
+   mem_resp_o.dack_tag <= resp.dack_tag;
+   mem_resp_o.rack     <= '1' when state = IDLE_ST and mem_req_i.request = '1'
+                          else '0';
+   mem_resp_o.rack_tag <= mem_req_i.tag when state = IDLE_ST
+                                         and mem_req_i.request = '1'
+                          else (others => '0');
 
    p_fsm : process (clk_i)
       variable v_word_addr : std_logic_vector(31 downto 0);
    begin
       if rising_edge(clk_i) then
 
-         -- rack and dack are single-cycle strobes
-         resp.rack     <= '0';
-         resp.rack_tag <= (others => '0');
+         -- dack is a single-cycle strobe; rack is combinational above
          resp.dack_tag <= (others => '0');
 
          case state is
@@ -153,8 +169,6 @@ begin
                if avm_waitrequest_i = '0' then
                   avm_read_r    <= '0';
                   avm_write_r   <= '0';
-                  resp.rack     <= '1';
-                  resp.rack_tag <= req_tag;
                   if req_rwn = '1' then
                      state <= WAIT_READDATA_ST;
                   else
