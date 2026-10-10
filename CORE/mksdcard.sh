@@ -29,6 +29,14 @@
 #   JiffyDOS_1541-II.bin  -> c64/jd-c1541.bin   (1541 JiffyDOS DOS)
 #   1581.rom              -> c64/1581.rom       (C1581 DOS; JiffyDOS_1581.bin
 #                                                used only if 1581.rom absent)
+#
+# Staged for doc/cmd_devices.md but NOT read by the core - there is no RAMLink,
+# CMD HD, CMD FD or SuperCPU in the design yet:
+#   ramlink201.bin        -> c64/ramlink.rom
+#   ramlink.rl            -> c64/ramlink.img
+#   CMD HD BOOTROM v280.bin           -> c64/cmdhd.rom
+#   CMD FD 4000 ROM from COREi64.bin  -> c64/cmdfd.rom
+#   scpu.rom              -> c64/scpu.rom
 #   *.d64 *.d81 *.crt *.prg *.g64 -> c64/
 #   MEGA65.ROM and *.M65  -> root (MEGA65 system files)
 ##############################################################################
@@ -123,6 +131,31 @@ if [ -n "$ASSETS" ] && [ -d "$ASSETS" ]; then
     else
         copy_if "$ASSETS/JiffyDOS_1581.bin" "$OUT/c64/1581.rom"     "c64/1581.rom     (JiffyDOS 1581)"
     fi
+
+    # CMD devices. None of these is read by the core yet - there is no RAMLink,
+    # CMD HD, CMD FD or SuperCPU in the design - so they are staged for the work
+    # described in doc/cmd_devices.md, not because anything loads them. They are
+    # copied under the names that document uses so the eventual
+    # C_CRTROMS_AUTO entries have something stable to point at.
+    echo "cmd    :"
+    # RAMLink ROM v2.01, 64 KB. The copy inside
+    # scpu_ramlink_sdcard_files_with_ROM.zip as SCPU/ramlink.rom is byte for
+    # byte the same file.
+    if   [ -f "$ASSETS/ramlink201.bin" ]; then
+        copy_if "$ASSETS/ramlink201.bin"  "$OUT/c64/ramlink.rom" "c64/ramlink.rom   (RAMLink ROM v2.01)"
+    else
+        copy_if "$ASSETS/ramlink.rom"     "$OUT/c64/ramlink.rom" "c64/ramlink.rom   (RAMLink ROM)"
+    fi
+    # RAMLink battery-backed RAM. Prefer the 8 MB .rl; the 16 MB variant in the
+    # zip is the same thing with more RAM fitted.
+    if   [ -f "$ASSETS/ramlink.rl" ]; then
+        copy_if "$ASSETS/ramlink.rl"      "$OUT/c64/ramlink.img" "c64/ramlink.img   (RAMLink RAM, 8 MB)"
+    else
+        copy_if "$ASSETS/ramlink.img"     "$OUT/c64/ramlink.img" "c64/ramlink.img   (RAMLink RAM)"
+    fi
+    copy_if "$ASSETS/CMD HD BOOTROM v280.bin" "$OUT/c64/cmdhd.rom" "c64/cmdhd.rom     (CMD HD boot ROM v2.80)"
+    copy_if "$ASSETS/CMD FD 4000 ROM from COREi64.bin" "$OUT/c64/cmdfd.rom" "c64/cmdfd.rom     (CMD FD-4000 ROM)"
+    copy_if "$ASSETS/scpu.rom"            "$OUT/c64/scpu.rom"    "c64/scpu.rom      (SuperCPU 64 ROM, 128 KB)"
 
     echo "disks  :"
     n=0
