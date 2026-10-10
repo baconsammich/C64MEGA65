@@ -70,9 +70,32 @@ jobs:
           ./make_synthetic_crt.py --type generic16 -o "$CRT_DIR/generic16.crt"
           ./make_synthetic_crt.py --type ocean     -o "$CRT_DIR/ocean.crt"
 
+      # Assemble the QNICE Shell firmware. Normally this happens inside Vivado,
+      # as a synth_design pre-hook (CORE/m2m-rom/synth_pre.tcl), so without
+      # this step an unresolved label or a bad .EQU in m2m-rom.asm is not found
+      # until someone starts a bitstream build. qasm exits non-zero and takes
+      # make_rom.sh down with it, so a defect here fails the job.
+      #
+      # Not make-toolchain.sh: that also builds vbcc, which wants flex and
+      # bison and is not needed to assemble the Shell.
+      - name: Build the QNICE assembler and the Shell firmware
+        run: |
+          cd M2M/QNICE
+          gcc assembler/qasm.c    -o assembler/qasm
+          gcc assembler/qasm2rom.c -o assembler/qasm2rom -std=c99
+          # Populates dist_kit/, which m2m-rom.asm includes (sysdef.asm,
+          # monitor.def). Those are generated, not committed.
+          cd monitor && ./compile_and_distribute.sh
+          cd ../../../CORE/m2m-rom && ./make_rom.sh
+
       # The C_MENU_* constants are absolute indices into the on-screen menu, so
       # inserting a menu line silently shifts them. Nothing else in the build
       # catches it - the core boots and then acts on the wrong menu item.
+      #
+      # This also pairs each OPTM_G_LOAD_ROM menu item with its C_CRTROMS_MAN
+      # entry: the framework maps them by counting menu items, so a mismatch
+      # makes every loadable ROM item load into the next one's buffer, with no
+      # error anywhere.
       - name: Check the menu indices
         working-directory: CORE/vhdl/test
         run: ./check_menu.sh
@@ -83,8 +106,9 @@ jobs:
         working-directory: CORE/vhdl/test
         run: ./analyze_all.sh
 
-      # The vendored C1581 needs --std=93 -fsynopsys -frelaxed, so it has its
-      # own gate rather than joining the one above.
+      # The vendored C1581 needs -fsynopsys -frelaxed and its own library
+      # (Gideon's 6502 and QNICE both define an entity called "alu"), so it has
+      # its own gate rather than joining the one above.
       - name: Elaborate the vendored C1581
         working-directory: CORE/vhdl/test
         run: ./analyze_1581.sh
